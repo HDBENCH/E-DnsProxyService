@@ -130,59 +130,60 @@ namespace DnsProxyLibrary
                     cancellationTokenSource.Cancel ();
                 }
 
-                DBG.MSG ("NamedPipe.Stop - pipeStream.Close \n");
                 if (pipeStream != null)
                 {
+                    DBG.MSG ("NamedPipe.Stop - pipeStream.Close \n");
                     pipeStream.Close ();
                 }
 
 
-                DBG.MSG ("NamedPipe.Stop - recvThread.Join \n");
                 if (recvThread != null)
                 {
+                    DBG.MSG ("NamedPipe.Stop - recvThread.Join \n");
                     recvThread.Join ();
+                    DBG.MSG ("NamedPipe.Stop - recvThreadCompleteEvent.WaitOne \n");
                     recvThreadCompleteEvent.WaitOne();
                 }
 
-                DBG.MSG ("NamedPipe.Stop - sendThread.Join \n");
                 if (sendThread != null)
                 {
+                    DBG.MSG ("NamedPipe.Stop - sendThread.Join \n");
                     sendThread.Join ();
                 }
 
-                DBG.MSG ("NamedPipe.Stop - parseThread.Join \n");
                 if (parseThread != null)
                 {
+                    DBG.MSG ("NamedPipe.Stop - parseThread.Join \n");
                     parseThread.Join ();
                 }
 
-                DBG.MSG ("NamedPipe.Stop - recvStream.Close \n");
                 if (recvStream != null)
                 {
+                    DBG.MSG ("NamedPipe.Stop - recvStream.Close \n");
                     recvStream.Close ();
                 }
 
-                DBG.MSG ("NamedPipe.Stop - writeStream.Close \n");
                 if (writeStream != null)
                 {
+                    DBG.MSG ("NamedPipe.Stop - writeStream.Close \n");
                     writeStream.Close ();
                 }
 
-                DBG.MSG ("NamedPipe.Stop - writeEvent.Close \n");
                 if (writeEvent != null)
                 {
+                    DBG.MSG ("NamedPipe.Stop - writeEvent.Close \n");
                     writeEvent.Close ();
                 }
 
-                DBG.MSG ("NamedPipe.Stop - recvEvent.Close \n");
                 if (recvEvent != null)
                 {
+                    DBG.MSG ("NamedPipe.Stop - recvEvent.Close \n");
                     recvEvent.Close ();
                 }
 
-                DBG.MSG ("NamedPipe.Stop - stopEvent.Close \n");
                 if (stopEvent != null)
                 {
+                    DBG.MSG ("NamedPipe.Stop - stopEvent.Close \n");
                     stopEvent.Close ();
                 }
             }
@@ -283,7 +284,7 @@ namespace DnsProxyLibrary
                         if (clientStream != null)
                         {
                             DBG.MSG ("NamedPipe.RecvThread - [{0}]: clientStream.Connect()\n", type_name);
-                            await clientStream.ConnectAsync (cancellationTokenSource.Token);
+                            await clientStream.ConnectAsync (100, cancellationTokenSource.Token);
                         }
                         else if (serverStream != null)
                         {
@@ -342,6 +343,10 @@ namespace DnsProxyLibrary
                 catch (TimeoutException /*e*/)
                 {
                     //DBG.MSG ("NamedPipe.RecvThread - [{0}]: TimeoutException, {1}\n", type_name, e.Message);
+                }
+                catch (IOException /*e*/)
+                {
+                    //DBG.MSG ("NamedPipe.RecvThread - [{0}]: IOException, {1}\n", type_name, e.Message);
                 }
                 catch (Exception e)
                 {

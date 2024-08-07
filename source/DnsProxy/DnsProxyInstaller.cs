@@ -193,7 +193,7 @@ namespace DnsProxyInstaller
                 string out_path =basePath + "database";
                 while (File.Exists (out_path))
                 {
-                    out_path = string.Format("{0}{1}_{2}{3}{4}_{5}{6}{7}", basePath, "database", DateTime.Now.Year, DateTime.Now.Month, DateTime.Now.Day, DateTime.Now.Hour, DateTime.Now.Minute, DateTime.Now.Second);
+                    out_path = string.Format("{0}{1}_{2:yy}{2:MM}{2:dd}_{2:HH}{2:mm}{2:ss}", basePath, "database", DateTime.Now);
                 }
 
                 data.Export (out_path);

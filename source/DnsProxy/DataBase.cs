@@ -135,6 +135,18 @@ namespace DnsProxyLibrary
         {
             return this.comment;
         }
+        
+        public bool SetComment(string value)
+        {
+            bool result = this.comment != value;
+
+            if (result)
+            {
+                this.comment = value; ;
+            }
+
+            return result;
+        }
 
 
         public DataBase Find (string host, bool bCreate, ref bool bModifyed)
@@ -172,7 +184,7 @@ namespace DnsProxyLibrary
         }
 
 
-        public DataBase Set (string host, FLAGS flags, ref bool bModifyed)
+        public DataBase SetFlags (string host, FLAGS flags, ref bool bModifyed)
         {
             DataBase db = Find (host, true, ref bModifyed);
 
@@ -185,7 +197,7 @@ namespace DnsProxyLibrary
             return db;
         }
 
-        public FLAGS Get (string host, bool bCreate, ref bool bModifyed)
+        public FLAGS GetFlags (string host, bool bCreate, ref bool bModifyed)
         {
             DataBase db = Find (host, bCreate, ref bModifyed);
 
@@ -312,7 +324,7 @@ namespace DnsProxyLibrary
                     }
                 }
 
-                Set(fullHostName, flags, ref bModifyed);
+                SetFlags(fullHostName, flags, ref bModifyed);
 
                 ImportFolder (subDirectory, fullHostName, callback);
             }

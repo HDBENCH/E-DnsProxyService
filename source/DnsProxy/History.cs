@@ -16,6 +16,7 @@ namespace DnsProxyLibrary
         public string ip;
         public string host;
         public string info;
+        public string comment;
 
         public override string ToString ()
         {
@@ -26,19 +27,21 @@ namespace DnsProxyLibrary
             result += string.Format ("{0}\t", this.ip);
             result += string.Format ("{0}\t", this.host);
             result += string.Format ("{0}\t", this.info);
+            result += string.Format ("{0}\t", this.comment);
 
             return result;
         }
 
         public string[] ToArray ()
         {
-            string[] result = new string [5];
+            string[] result = new string [6];
 
             result[0] = time.ToString ();
             result[1] = flags.ToString ();
             result[2] = ip.ToString ();
             result[3] = host.ToString ();
             result[4] = info.ToString ();
+            result[5] = comment.ToString ();
 
             return result;
         }
@@ -94,6 +97,12 @@ namespace DnsProxyLibrary
                         }
                         break;
 
+                    case 5:
+                        {
+                            this.comment = strs[i];
+                        }
+                        break;
+
                     default:
                         {
                             //Debug.Assert(false);
@@ -114,13 +123,14 @@ namespace DnsProxyLibrary
         }
 
 
-        public void Set (DateTime time, FLAGS flags, string ip, string host, string info)
+        public void Set (DateTime time, FLAGS flags, string ip, string host, string info, string comment)
         {
             this.time = time;
             this.flags = flags;
             this.ip = ip;
             this.host = host;
             this.info = info;
+            this.comment = comment;
         }
 
     }

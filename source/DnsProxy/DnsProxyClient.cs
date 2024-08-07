@@ -74,6 +74,12 @@ namespace DnsProxyLibrary
             this.namedPipe.WriteDataAsync(bytes, 0, bytes.Length);
         }
 
+        public void DataBaseSetComment (string host, string comment)
+        {
+            byte[] byte_comment = Encoding.Default.GetBytes (comment);
+            byte[] bytes = Command.Create(CMD.COMMENT, byte_comment, host);
+            this.namedPipe.WriteDataAsync(bytes, 0, bytes.Length);
+        }
         public void DnsCacheClear ()
         {
             byte[] bytes = Command.Create(CMD.DNS_CLEAR);
@@ -169,7 +175,7 @@ namespace DnsProxyLibrary
                         }
 
                         DBG.MSG("DnsProxyClient.PipeReceive - {0}, {1}, {2}\n", cmd.GetCMD(), (DataBase.FLAGS)bytes_value[0], cmd.GetString());
-                        this.dataBase.Set(cmd.GetString(), (DataBase.FLAGS)bytes_value[0], ref this.bModifyed);
+                        this.dataBase.SetFlags(cmd.GetString(), (DataBase.FLAGS)bytes_value[0], ref this.bModifyed);
                     }
                     break;
 
@@ -182,7 +188,7 @@ namespace DnsProxyLibrary
                         }
 
                         DBG.MSG("DnsProxyClient.PipeReceive - {0}, {1}, {2}\n", cmd.GetCMD(), (DataBase.FLAGS)bytes_value[0], cmd.GetString());
-                        this.dataBase.Set(cmd.GetString(), (DataBase.FLAGS)bytes_value[0], ref this.bModifyed);
+                        this.dataBase.SetFlags(cmd.GetString(), (DataBase.FLAGS)bytes_value[0], ref this.bModifyed);
                     }
                     break;
 
@@ -221,6 +227,21 @@ namespace DnsProxyLibrary
 
                 case CMD.DNS_CLEAR:
                     {
+                    }
+                    break;
+
+                case CMD.COMMENT:
+                    {
+                        string comment = Encoding.Default.GetString (bytes_value, 0, bytes_value.Length);
+                        bool bMod = false;
+                        DataBase db = dataBase.Find (cmd.GetString (), true, ref bMod);
+
+                        DBG.MSG ("DnsProxyServer.PipeReceive - {0}, {1}, {2}\n", cmd.GetCMD (), cmd.GetString (), comment);
+
+                        if (db.SetComment (comment) || bMod)
+                        {
+                            this.bModifyed = true;
+                        }
                     }
                     break;
 

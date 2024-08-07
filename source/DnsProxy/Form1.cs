@@ -16,6 +16,8 @@ using System.Reflection;
 using System.Timers;
 using System.Xml.Linq;
 using static DnsProxyLibrary.DnsProtocol;
+using static System.Windows.Forms.VisualStyles.VisualStyleElement.ToolBar;
+using System.CodeDom;
 
 namespace DnsProxyAdmin
 {
@@ -30,6 +32,7 @@ namespace DnsProxyAdmin
         private ColumnHeader columnIp = new ColumnHeader();
         private ColumnHeader columnHost = new ColumnHeader();
         private ColumnHeader columnInfo = new ColumnHeader();
+        private ColumnHeader columnComment = new ColumnHeader();
         private object listViewItemListLock = new object();
         private List<string> historyAddList = new List<string>();
         private List<string> setHistoryAddList = new List<string>();
@@ -43,6 +46,7 @@ namespace DnsProxyAdmin
         private System.Windows.Forms.Timer timer1Sec = new System.Windows.Forms.Timer();
         private bool bProxyEnable = false;
         private bool bIsClosing = false;
+        private bool bViewScroll = true;
 
 
         public Form1 ()
@@ -82,8 +86,10 @@ namespace DnsProxyAdmin
             this.columnHost.Text = "Host";
             this.columnHost.Width = 250;
             this.columnInfo.Text = "Info";
-            this.columnInfo.Width = 300;
-            this.listView1.Columns.AddRange(new ColumnHeader[] { this.columnTime, this.columnType, this.columnIp, this.columnHost, this.columnInfo });
+            this.columnInfo.Width = 250;
+            this.columnComment.Text = "Comment";
+            this.columnComment.Width = 300;
+            this.listView1.Columns.AddRange(new ColumnHeader[] { this.columnTime, this.columnType, this.columnIp, this.columnHost, this.columnInfo, this.columnComment });
 
             this.listView1.GetType ().InvokeMember ("DoubleBuffered",
                                                 BindingFlags.NonPublic | BindingFlags.Instance | BindingFlags.SetProperty,
@@ -103,6 +109,8 @@ namespace DnsProxyAdmin
 
             //Menu
             ProxyEnable(false);
+            ViewScroll(true);
+            MenuEnable(false);
 
             this.dnsProxyClient.Start (PipeConnect, PipeReceive, this);
         }
@@ -251,7 +259,7 @@ namespace DnsProxyAdmin
         {
             this.listView1.VirtualListSize = 0;
             this.listView1.VirtualListSize = this.listViewItemList.Count;
-            if (this.listViewItemList.Count > 0)
+            if (this.bViewScroll && (this.listViewItemList.Count > 0))
             {
                 this.listView1.EnsureVisible (this.listViewItemList.Count - 1);
             }
@@ -438,7 +446,7 @@ namespace DnsProxyAdmin
                         if (db == null)
                         {
                             bool bModifyed = false;
-                            db = this.dnsProxyClient.GetDataBase().Set(host, DataBase.FLAGS.None, ref bModifyed);
+                            db = this.dnsProxyClient.GetDataBase().SetFlags(host, DataBase.FLAGS.None, ref bModifyed);
                         }
 
                         n = new TreeNode(h);
@@ -557,6 +565,21 @@ namespace DnsProxyAdmin
         void contextMenu_Exit (object sender, EventArgs e)
         {
             Close ();
+        }
+        void contextMenu_Comment (object sender, EventArgs e)
+        {
+            ToolStripMenuItem item = sender as ToolStripMenuItem;
+            DataBase db = item.Tag as DataBase;
+
+            CommentForm form = new CommentForm();
+
+            form.comment = db.GetComment();
+            DialogResult result = form.ShowDialog();
+            if (result == DialogResult.OK)
+            {
+                dnsProxyClient.DataBaseSetComment(db.GetFullName(), form.comment);
+            }
+
         }
         void contextMenu_None (object sender, EventArgs e)
         {
@@ -700,13 +723,161 @@ namespace DnsProxyAdmin
 
             toolStripStatusView.Text = "Set View";
         }
+
+        void contextMenu_ViewScroll (object sender, EventArgs e)
+        {
+            ViewScroll(!this.bViewScroll);
+        }
+        void ViewScroll (bool bEnable)
+        {
+            this.bViewScroll = bEnable;
+
+            scrollToolStripMenuItem.Checked = this.bViewScroll;
+            if (this.bViewScroll)
+            {
+                this.toolStripStatusScroll.BackColor = Color.LightGreen;
+                //this.toolStripStatusScroll.Text = "Scroll";
+            }
+            else
+            {
+                this.toolStripStatusScroll.BackColor = Color.LightPink;
+                //this.toolStripStatusScroll.Text = "      ";
+            }
+        }
+
         void contextMenu_ProxyEnable(object sender, EventArgs e)
         {
             this.dnsProxyClient.ProxyEnable(!proxyEnableToolStripMenuItem.Checked);
         }
 
+#if false
+        private object ObjectDeepCopy (object obj)
+        {
+            object result = null;
 
-        private void statusStrip1MouseUp (object sender, MouseEventArgs e)
+            try
+            {
+                do
+                {
+                    if (obj == null)
+                    {
+                        break;
+                    }
+
+                    var type = obj.GetType();
+
+                    if ((type == typeof (String)) || (type.IsValueType & type.IsPrimitive))
+                    {
+                        result = obj;
+                        break;
+                    }
+
+                    if (typeof (Delegate).IsAssignableFrom (type))
+                    {
+                        break;
+                    }
+
+                    MethodInfo CloneMethod = typeof(Object).GetMethod("MemberwiseClone", BindingFlags.NonPublic | BindingFlags.Instance);
+                    result = CloneMethod?.Invoke (obj, null);
+
+                    if (type.IsArray)
+                    {
+                        var arrayType = type.GetElementType();
+                        if ((arrayType == typeof (String)) || (arrayType.IsValueType & arrayType.IsPrimitive))
+                        {
+                        }
+                        else
+                        {
+                            Array clonedArray = (Array)result;
+                            clonedArray.ForEach((array, indices) => array.SetValue(ObjectDeepCopy(clonedArray.GetValue(indices)), indices));
+                        }
+                    }
+
+                    foreach (FieldInfo fieldInfo in type.GetFields(BindingFlags.Instance | BindingFlags.NonPublic | BindingFlags.Public | BindingFlags.FlattenHierarchy))
+                    {
+                        if ((fieldInfo.FieldType == typeof (String)) || (fieldInfo.FieldType.IsValueType & fieldInfo.FieldType.IsPrimitive))
+                        {
+                            continue;
+                        }
+
+                        var originalFieldValue = fieldInfo.GetValue(obj);
+                        var clonedFieldValue = ObjectDeepCopy(originalFieldValue);
+                        fieldInfo.SetValue(result, clonedFieldValue);
+                    }
+
+                }
+                while (false);
+            }
+            catch (Exception e)
+            {
+                DBG.MSG("Form1.ObjectDeepCopy - Exception, {0}\n", e.Message);
+            }
+
+            return result;
+        }
+#endif
+        private ToolStripMenuItem MenuCopy (ToolStripMenuItem menuSrc)
+        {
+#if false
+            ToolStripMenuItem menuDst    = new ToolStripMenuItem (menuSrc.Text, null);
+
+            PropertyInfo InfoSrc = menuSrc.GetType().GetProperty("Events", BindingFlags.NonPublic | BindingFlags.Instance);
+            EventHandlerList listSrc = (EventHandlerList)InfoSrc.GetValue(menuSrc, null);
+
+            PropertyInfo InfoDst = menuDst.GetType().GetProperty("Events", BindingFlags.NonPublic | BindingFlags.Instance);
+            EventHandlerList listDst = (EventHandlerList)InfoDst.GetValue(menuDst, null);
+           
+            listDst.AddHandlers(listSrc);
+            menuDst.CheckState = menuSrc.CheckState;
+#else
+            ToolStripMenuItem menuDst = null;
+
+            try
+            {
+                MethodInfo CloneMethod = typeof(Object).GetMethod("MemberwiseClone", BindingFlags.NonPublic | BindingFlags.Instance);
+                menuDst = (ToolStripMenuItem)CloneMethod?.Invoke (menuSrc, null);
+            }
+            catch (Exception e)
+            {
+                DBG.MSG("Form1.MenuCopy - Exception, {0}\n", e.Message);
+            }
+#endif
+
+            return menuDst;
+        }
+
+        private void MenuEnable (bool bEnable)
+        {
+            this.optionToolStripMenuItem.Enabled = bEnable;
+            this.viewToolStripMenuItem.Enabled = bEnable;
+
+            foreach (var v in this.optionToolStripMenuItem.DropDownItems)
+            {
+                ToolStripMenuItem item = v as ToolStripMenuItem;
+                if (item != null)
+                {
+                    item.Enabled = bEnable;
+                }
+            }
+
+            foreach (var v in this.viewToolStripMenuItem.DropDownItems)
+            {
+                ToolStripMenuItem item = v as ToolStripMenuItem;
+                if (item != null)
+                {
+                    item.Enabled = bEnable;
+                }
+            }
+
+            this.toolStripStatusEnabled.Enabled = bEnable;
+            this.toolStripStatusView.Enabled = bEnable;
+            this.toolStripStatusScroll.Enabled = bEnable;
+
+        }
+
+
+
+        private void proxyEnableToolStripMouseUp (object sender, MouseEventArgs e)
         {
             do
             {
@@ -714,16 +885,18 @@ namespace DnsProxyAdmin
                 {
                     break;
                 }
+                
 
-                ContextMenuStrip rootMenu = new ContextMenuStrip ();
-                rootMenu.Items.AddRange (new ToolStripMenuItem[] { proxyEnableToolStripMenuItem });
+                ContextMenuStrip Menu = new ContextMenuStrip ();
 
-                rootMenu.Show (this.statusStrip1, new System.Drawing.Point (e.X, e.Y));
+                Menu.Items.AddRange (new ToolStripMenuItem[] { MenuCopy(proxyEnableToolStripMenuItem) });
+
+                Menu.Show (this.statusStrip1, new System.Drawing.Point (toolStripStatusEnabled.Bounds.X + e.X, toolStripStatusEnabled.Bounds.Y + e.Y));
             }
             while (false);
         }
 
-        private void statusStrip2MouseUp (object sender, MouseEventArgs e)
+        private void viewToolStripMouseUp (object sender, MouseEventArgs e)
         {
             do
             {
@@ -732,10 +905,31 @@ namespace DnsProxyAdmin
                     break;
                 }
 
-                ContextMenuStrip rootMenu = new ContextMenuStrip ();
-                rootMenu.Items.AddRange (new ToolStripMenuItem[] { allToolStripMenuItem, acceptToolStripMenuItem, rejectToolStripMenuItem, ignoreToolStripMenuItem, answerToolStripMenuItem, setToolStripMenuItem });
+                ContextMenuStrip Menu = new ContextMenuStrip ();
 
-                rootMenu.Show (this.statusStrip1, new System.Drawing.Point (e.X, e.Y));
+                Menu.Items.AddRange (new ToolStripMenuItem[] { MenuCopy(allToolStripMenuItem), MenuCopy(acceptToolStripMenuItem), MenuCopy(rejectToolStripMenuItem), MenuCopy(ignoreToolStripMenuItem), MenuCopy(answerToolStripMenuItem), MenuCopy(setToolStripMenuItem) });
+                Menu.Items.Add (new ToolStripSeparator ());
+                Menu.Items.AddRange (new ToolStripMenuItem[] { MenuCopy(logClearToolStripMenuItem) });
+
+                Menu.Show (this.statusStrip1, new System.Drawing.Point (toolStripStatusView.Bounds.X + e.X, toolStripStatusView.Bounds.Y + e.Y));
+            }
+            while (false);
+        }
+
+        private void scrollToolStripMouseUp (object sender, MouseEventArgs e)
+        {
+            do
+            {
+                if (e.Button != MouseButtons.Right)
+                {
+                    break;
+                }
+
+                ContextMenuStrip Menu = new ContextMenuStrip ();
+
+                Menu.Items.AddRange (new ToolStripMenuItem[] { MenuCopy(scrollToolStripMenuItem) });
+
+                Menu.Show (this.statusStrip1, new System.Drawing.Point (toolStripStatusScroll.Bounds.X + e.X, toolStripStatusScroll.Bounds.Y + e.Y));
             }
             while (false);
         }
@@ -835,29 +1029,31 @@ namespace DnsProxyAdmin
             ToolStripMenuItem rejectMenu;
             ToolStripMenuItem ignoreMenu;
             ToolStripMenuItem copyMenu;
+            ToolStripMenuItem commentMenu;
 
             while (db != null)
             {
-                bool bSkip = false;
-
                 //ContextMenu
                 noneMenu = new ToolStripMenuItem ("&None");
                 acceptMenu = new ToolStripMenuItem ("&Accept");
                 rejectMenu = new ToolStripMenuItem ("&Reject");
                 ignoreMenu = new ToolStripMenuItem ("&Ignore");
                 copyMenu = new ToolStripMenuItem ("&Copy");
+                commentMenu = new ToolStripMenuItem ("C&omment");
 
                 noneMenu.Tag = db;
                 acceptMenu.Tag = db;
                 rejectMenu.Tag = db;
                 ignoreMenu.Tag = db;
                 copyMenu.Tag = db.GetFullName();
+                commentMenu.Tag = db;
 
                 noneMenu.Click += contextMenu_None;
                 acceptMenu.Click += contextMenu_Accept;
                 rejectMenu.Click += contextMenu_Reject;
                 ignoreMenu.Click += contextMenu_Ignore;
                 copyMenu.Click += contextMenu_Copy;
+                commentMenu.Click += contextMenu_Comment;
 
                 switch (db.GetFlags ())
                 {
@@ -881,11 +1077,6 @@ namespace DnsProxyAdmin
                         ignoreMenu.Checked = true;
                     }
                     break;
-                case DataBase.FLAGS.Answer:
-                    {
-                        bSkip = true;
-                    }
-                    break;
                 default:
                     {
                         Debug.Assert (false);
@@ -893,16 +1084,15 @@ namespace DnsProxyAdmin
                     break;
                 }
 
-                if (!bSkip)
-                {
-                    ToolStripMenuItem menu = new ToolStripMenuItem (db.GetFullName());
+                ToolStripMenuItem menu = new ToolStripMenuItem (db.GetFullName());
 
-                    menu.DropDownItems.AddRange (new ToolStripMenuItem[] { noneMenu, acceptMenu, rejectMenu, ignoreMenu});
-                    menu.DropDownItems.Add (new ToolStripSeparator ());
-                    menu.DropDownItems.AddRange (new ToolStripMenuItem[] { copyMenu });
+                menu.DropDownItems.AddRange (new ToolStripMenuItem[] { noneMenu, acceptMenu, rejectMenu, ignoreMenu});
+                menu.DropDownItems.Add (new ToolStripSeparator ());
+                menu.DropDownItems.AddRange (new ToolStripMenuItem[] { commentMenu });
+                menu.DropDownItems.Add (new ToolStripSeparator ());
+                menu.DropDownItems.AddRange (new ToolStripMenuItem[] { copyMenu });
 
-                    rootMenu.Items.AddRange (new ToolStripMenuItem[] { menu });
-                }
+                rootMenu.Items.AddRange (new ToolStripMenuItem[] { menu });
 
                 db = db.GetParent();
 
@@ -917,7 +1107,7 @@ namespace DnsProxyAdmin
                 rootMenu.Items.Add (new ToolStripSeparator ());
             }
 
-            rootMenu.Items.AddRange (new ToolStripMenuItem[] { logClearToolStripMenuItem1, cacheClearToolStripMenuItem });
+            rootMenu.Items.AddRange (new ToolStripMenuItem[] { MenuCopy(logClearToolStripMenuItem), MenuCopy(cacheClearToolStripMenuItem) });
 
             rootMenu.Show (control, new System.Drawing.Point (x, y));
         }
@@ -945,14 +1135,16 @@ namespace DnsProxyAdmin
             if (bConnect)
             {
                 dnsProxyClient.Clear();
+                Invoke (new Action<bool> (MenuEnable), true);
             }
             else
             {
                 if (!this.bIsClosing)
                 {
-
+                    dnsProxyClient.Clear ();
                     Invoke (new Action<object, EventArgs> (contextMenu_LogClear), new object[] { null, null });
                     Invoke (new Action (TreeInitialize));
+                    Invoke (new Action<bool> (MenuEnable), false);
                 }
             }
 
@@ -1094,6 +1286,11 @@ namespace DnsProxyAdmin
 
 
             case CMD.DNS_CLEAR:
+                {
+                }
+                break;
+
+            case CMD.COMMENT:
                 {
                 }
                 break;

@@ -17,6 +17,7 @@ using static System.Net.Mime.MediaTypeNames;
 using System.Timers;
 using System.Runtime.InteropServices;
 using System.IO.Pipes;
+using System.Xml.Linq;
 
 namespace DnsProxyLibrary
 {
@@ -111,46 +112,41 @@ namespace DnsProxyLibrary
 
                 this.namedPipe.StartServer (Common.pipeGuid, PipeConnect, PipeReceiveAsync, this);
 #if false
-            UnicastIPAddressInformationCollection addrs = IPGlobalProperties.GetIPGlobalProperties ().GetUnicastAddresses();
-
-            foreach (var v in addrs)
-            {
-                if(v.Address.AddressFamily != AddressFamily.InterNetwork)
+                IPHostEntry hosts = Dns.GetHostEntry(Dns.GetHostName());
+                foreach (var ip in hosts.AddressList)
                 {
-                    continue;
+                    if (ip.AddressFamily != AddressFamily.InterNetwork)
+                    {
+                        continue;
+                    }
+
+                    try
+                    {
+                        ThreadData td = new ThreadData ();
+
+                        td.remoteEP = new IPEndPoint (this.dnsAddr, this.dnsPort);
+                        td.localEP = new IPEndPoint (ip, this.dnsPort);
+                        //td.udpClient = new UdpClient (td.localEP);
+
+                        td.recvThread = new Thread (new ParameterizedThreadStart (RecvThread));
+                        td.recvThread.Name = "RecvThread";
+                        td.recvThread.Start (td);
+
+                        td.parseThread = new Thread (new ParameterizedThreadStart (ParseThread));
+                        td.parseThread.Name = "ParseThread";
+                        td.parseThread.Start (td);
+
+                        td.oneSecThread = new Thread (new ParameterizedThreadStart (OneSecThread));
+                        td.oneSecThread.Name = "OneSecThread";
+                        td.oneSecThread.Start (td);
+
+                        this.threadList.Add(td);
+                    }
+                    catch (Exception)
+                    {
+                        int c=0;
+                    }
                 }
-
-                if((v.Address.Address & 0xFF) == 127)
-                {
-                    continue;
-                }
-
-                try
-                {
-                    ThreadData td = new ThreadData ();
-
-                    td.remoteEP = new IPEndPoint (this.dnsAddr, this.dnsPort);
-                    td.localEP = new IPEndPoint (v.Address, this.dnsPort);
-                    //td.udpClient = new UdpClient (td.localEP);
-
-                    td.recvThread = new Thread (new ParameterizedThreadStart (RecvThread));
-                    td.recvThread.Name = "RecvThread";
-                    td.recvThread.Start (td);
-
-                    td.parseThread = new Thread (new ParameterizedThreadStart (ParseThread));
-                    td.parseThread.Name = "ParseThread";
-                    td.parseThread.Start (td);
-
-                    td.oneSecThread = new Thread (new ParameterizedThreadStart (OneSecThread));
-                    td.oneSecThread.Name = "OneSecThread";
-                    td.oneSecThread.Start (td);
-
-                    this.threadList.Add(td);
-                }
-                catch (Exception)
-                {
-                }
-            }
 #else
 
                 try
@@ -475,7 +471,22 @@ namespace DnsProxyLibrary
                             {
                                 var v = dns.Answers[i];
 
-                                HistoryAdd (FLAGS.Answer, data.senderEndPoint.Address.ToString (), v.Name, string.Format ("{0}: {1}, {2}", i + 1, v.Type.ToString (), v.typeData.ToDetail ()));
+                                bool bMod = false;
+                                string comment = "";
+                                DataBase db = this.dataBase.Find(v.Name, false, ref bMod);
+                                while (db != null)
+                                {
+                                    comment = db.GetComment();
+                                    break;
+                                    //if (!string.IsNullOrEmpty (comment))
+                                    //{
+                                    //    break;
+                                    //}
+
+                                    //db = db.GetParent();
+                                }
+
+                                HistoryAdd (FLAGS.Answer, data.senderEndPoint.Address.ToString (), v.Name, string.Format ("{0}: {1}, {2}", i + 1, v.Type.ToString (), v.typeData.ToDetail ()), comment);
                             }
 
                             lock (td.reqDic)
@@ -518,12 +529,13 @@ namespace DnsProxyLibrary
                 DataBase.FLAGS flags = DataBase.FLAGS.None;
                 bool bMod= false;
                 DataBase db = this.dataBase.Find(v.Name, true, ref bMod);
+                string comment = db.GetComment();
 
                 if (bMod)
                 {
                     this.bModifyed = true;
                     byte[] b = Command.Create(CMD.ADD, new byte[] { (byte)db.GetFlags() }, db.GetFullName());
-                    namedPipe.WriteDataAsync (b, 0, b.Length);
+                    this.namedPipe.WriteDataAsync (b, 0, b.Length);
                 }
 
 
@@ -539,17 +551,17 @@ namespace DnsProxyLibrary
                     db = db.GetParent ();
                 }
 
-                if (!bProxyEnable)
+                if (!this.bProxyEnable)
                 {
                     DBG.MSG ("DnsProxyServer.IsAcceptAsync - host={0}, {1} --> Accept(Proxy Disable)\n", v.Name, flags);
-                    HistoryAdd (FLAGS.Disable, ip, v.Name, string.Format ("{0}: {1}", i + 1, v.Type.ToString ()));
+                    HistoryAdd (FLAGS.Disable, ip, v.Name, string.Format ("{0}: {1}", i + 1, v.Type.ToString ()), comment);
 
                     result = true;
                 }
                 else
                 {
                     DBG.MSG ("DnsProxyServer.IsAcceptAsync - host={0}, {1}\n", v.Name, flags);
-                    HistoryAdd (flags, ip, v.Name, string.Format ("{0}: {1}", i + 1, v.Type.ToString ()));
+                    HistoryAdd (flags, ip, v.Name, string.Format ("{0}: {1}", i + 1, v.Type.ToString ()), comment);
 
                     if (flags == DataBase.FLAGS.Accept)
                     {
@@ -567,7 +579,7 @@ namespace DnsProxyLibrary
             return result;
         }
 
-        void HistoryAdd (DataBase.FLAGS flags, string ip, string host, string info)
+        void HistoryAdd (DataBase.FLAGS flags, string ip, string host, string info, string comment)
         {
             HistoryData data = new HistoryData ();
             data.time = DateTime.Now;
@@ -575,6 +587,7 @@ namespace DnsProxyLibrary
             data.ip = ip;
             data.host = host;
             data.info = info;
+            data.comment = comment;
 
             switch (flags)
             {
@@ -586,10 +599,10 @@ namespace DnsProxyLibrary
                     lock (this.SetHistoryList)
                     {
 
-                        SetHistoryList.Add (data);
-                        if (SetHistoryList.Count > 3000)
+                        this.SetHistoryList.Add (data);
+                        if (this.SetHistoryList.Count > 3000)
                         {
-                            SetHistoryList.RemoveAt (0); 
+                            this.SetHistoryList.RemoveAt (0); 
                         }
                         this.bSetHistoryModifyed = true;
                     }
@@ -616,7 +629,7 @@ namespace DnsProxyLibrary
         void HistorySend(HistoryData data)
         {
             byte[] b = Command.Create(CMD.HISTORY, new byte[] { (byte)data.flags }, data.ToString());
-            namedPipe.WriteDataAsync (b, 0, b.Length);
+            this.namedPipe.WriteDataAsync (b, 0, b.Length);
         }
 
         void Load ()
@@ -693,7 +706,7 @@ namespace DnsProxyLibrary
 
             byte[] b;
             b = Command.Create (CMD.ENABLE, new byte[1] { (byte)(this.bProxyEnable ? 1:0) });
-            namedPipe.WriteDataAsync (b, 0, b.Length);
+            this.namedPipe.WriteDataAsync (b, 0, b.Length);
 
             this._connectFunc (this._funcParam, bConnect);
 
@@ -732,9 +745,9 @@ namespace DnsProxyLibrary
 
                 case CMD.LOAD:
                     {
-                        byte[] b = dataBase.Export();
+                        byte[] b = this.dataBase.Export();
                         b = Command.Create (CMD.LOAD, b);
-                        namedPipe.WriteDataAsync (b, 0, b.Length);
+                        this.namedPipe.WriteDataAsync (b, 0, b.Length);
 
                     }
                     break;
@@ -743,7 +756,7 @@ namespace DnsProxyLibrary
                     {
                         Debug.Assert (false);
 
-                        HistoryAdd((DataBase.FLAGS)(bytes_value[0] + (int)DataBase.FLAGS.SetNone), "", null, cmd.GetString ());
+                        HistoryAdd((DataBase.FLAGS)(bytes_value[0] + (int)DataBase.FLAGS.SetNone), "", cmd.GetString (), "", "");
                     }
                     break;
 
@@ -757,15 +770,15 @@ namespace DnsProxyLibrary
 
                         DBG.MSG ("DnsProxyServer.PipeReceive - {0}, {1}, {2}\n", cmd.GetCMD (), (DataBase.FLAGS)bytes_value[0], cmd.GetString ());
                         bool bMod = false;
-                        dataBase.Set (cmd.GetString (), (DataBase.FLAGS)bytes_value[0], ref bMod);
+                        this.dataBase.SetFlags (cmd.GetString (), (DataBase.FLAGS)bytes_value[0], ref bMod);
                         if (bMod)
                         {
                             this.bModifyed = true;
                             DBG.MSG ("DnsProxyServer.PipeReceive - {0}, {1}, {2} --> send\n", cmd.GetCMD (), (DataBase.FLAGS)bytes_value[0], cmd.GetString ());
-                            namedPipe.WriteDataAsync (bytes, 0, bytes.Length);
+                            this.namedPipe.WriteDataAsync (bytes, 0, bytes.Length);
                         }
 
-                        HistoryAdd((DataBase.FLAGS)(bytes_value[0] + (int)DataBase.FLAGS.SetNone), "", cmd.GetString (), null);
+                        HistoryAdd((DataBase.FLAGS)(bytes_value[0] + (int)DataBase.FLAGS.SetNone), "", cmd.GetString (), "", "");
                     }
                     break;
 
@@ -778,7 +791,7 @@ namespace DnsProxyLibrary
                         if (bMod)
                         {
                             this.bModifyed = true;
-                            namedPipe.WriteDataAsync (bytes, 0, bytes.Length);
+                            this.namedPipe.WriteDataAsync (bytes, 0, bytes.Length);
                         }
                     }
                     break;
@@ -805,7 +818,7 @@ namespace DnsProxyLibrary
                                 }
 
                                 b = ms.ToArray ();
-                                namedPipe.WriteAsync (b, 0, b.Length);
+                                this.namedPipe.WriteAsync (b, 0, b.Length);
 
                                 ms.SetLength (0);
 
@@ -822,7 +835,7 @@ namespace DnsProxyLibrary
                                 }
 
                                 b = ms.ToArray ();
-                                namedPipe.WriteAsync (b, 0, b.Length);
+                                this.namedPipe.WriteAsync (b, 0, b.Length);
                             }
                         }
 
@@ -840,8 +853,8 @@ namespace DnsProxyLibrary
 
                         DBG.MSG ("DnsProxyServer.PipeReceive - {0}, {1}, {2}\n", cmd.GetCMD (), bytes_value[0], cmd.GetString ());
 
-                        bProxyEnable = bytes_value[0] != 0;
-                        namedPipe.WriteDataAsync (bytes, 0, bytes.Length);
+                        this.bProxyEnable = bytes_value[0] != 0;
+                        this.namedPipe.WriteDataAsync (bytes, 0, bytes.Length);
                     }
                     break;
 
@@ -849,6 +862,22 @@ namespace DnsProxyLibrary
                     {
                         DBG.MSG ("DnsProxyServer.PipeReceive, {0}, {1}\n", cmd.GetCMD (), cmd.GetString ());
                         FlushCache();
+                    }
+                    break;
+
+                case CMD.COMMENT:
+                    {
+                        string comment = Encoding.Default.GetString (bytes_value, 0, bytes_value.Length);
+                        bool bMod = false;
+                        DataBase db = dataBase.Find (cmd.GetString (), true, ref bMod);
+
+                        DBG.MSG ("DnsProxyServer.PipeReceive - {0}, {1}, {2}\n", cmd.GetCMD (), cmd.GetString (), comment);
+
+                        if (db.SetComment (comment) || bMod)
+                        {
+                            this.bModifyed = true;
+                            this.namedPipe.WriteDataAsync (bytes, 0, bytes.Length);
+                        }
                     }
                     break;
 

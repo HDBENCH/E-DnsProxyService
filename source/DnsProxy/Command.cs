@@ -20,6 +20,7 @@ namespace DnsProxyLibrary
         SET_HISTORY,
         ENABLE,
         DNS_CLEAR,
+        COMMENT,
     }
 
     public class Command
