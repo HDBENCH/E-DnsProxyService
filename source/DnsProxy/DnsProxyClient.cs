@@ -63,6 +63,11 @@ namespace DnsProxyLibrary
             return dataBase.Find(host, false, ref bModifyed);
         }
 
+        public void DataBaseOptimization ()
+        {
+            byte[] bytes = Command.Create(CMD.DB_OPTIMIZATION, null, "");
+            this.namedPipe.WriteDataAsync(bytes, 0, bytes.Length);
+        }
         public void DataBaseSet (DataBase.FLAGS flags, string host)
         {
             byte[] bytes = Command.Create(CMD.SET, new byte[1] { (byte)flags}, host);
@@ -217,16 +222,19 @@ namespace DnsProxyLibrary
 
                 case CMD.SET_HISTORY:
                     {
+                        DBG.MSG("DnsProxyClient.PipeReceive - {0}, {1}\n", cmd.GetCMD(), cmd.GetString());
                     }
                     break;
 
                 case CMD.ENABLE:
                     {
+                        DBG.MSG("DnsProxyClient.PipeReceive - {0}, {1}\n", cmd.GetCMD(), cmd.GetString());
                     }
                     break;
 
                 case CMD.DNS_CLEAR:
                     {
+                        DBG.MSG("DnsProxyClient.PipeReceive - {0}, {1}\n", cmd.GetCMD(), cmd.GetString());
                     }
                     break;
 
@@ -241,6 +249,24 @@ namespace DnsProxyLibrary
                         if (db.SetComment (comment) || bMod)
                         {
                             this.bModifyed = true;
+                        }
+                    }
+                    break;
+
+                case CMD.DB_OPTIMIZATION:
+                    {
+                        DBG.MSG("DnsProxyClient.PipeReceive - {0}, {1}\n", cmd.GetCMD(), cmd.GetString());
+                    }
+                    break;
+
+                case CMD.DATETIME:
+                    {
+                        DBG.MSG("DnsProxyClient.PipeReceive - {0}, {1}\n", cmd.GetCMD(), cmd.GetString());
+                        bool bMod = false;
+                        DataBase db = dataBase.Find (cmd.GetString (), false, ref bMod);
+                        if (db != null)
+                        {
+                            db.UpdateDatetime();
                         }
                     }
                     break;

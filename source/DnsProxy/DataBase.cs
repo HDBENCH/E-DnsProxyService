@@ -25,6 +25,7 @@ namespace DnsProxyLibrary
 
         private string name = "";
         private string comment = "";
+        private DateTime datetime = DateTime.Now;
         private FLAGS flags = FLAGS.Reject;
         private DataBase parent = null;
         private ConcurrentDictionary<string, DataBase> dataBase = new ConcurrentDictionary<string, DataBase>();
@@ -85,6 +86,7 @@ namespace DnsProxyLibrary
             this.name = "";
             this.comment = "";
             this.flags = FLAGS.Reject;
+            this.datetime = DateTime.Now;
             this.dataBase.Clear ();
         }
 
@@ -136,6 +138,15 @@ namespace DnsProxyLibrary
             return this.comment;
         }
         
+        public DateTime GetDatetime()
+        {
+            return this.datetime;
+        }
+        public void UpdateDatetime()
+        {
+            this.datetime = DateTime.Now;
+        }
+        
         public bool SetComment(string value)
         {
             bool result = this.comment != value;
@@ -155,6 +166,8 @@ namespace DnsProxyLibrary
             DataBase data;
             string[] hosts = host.Split('.');
 
+            lock (this)
+            {
             for (int i = 0; i < hosts.Length; i++)
             {
                 string n = hosts[hosts.Length - i - 1];
@@ -172,12 +185,14 @@ namespace DnsProxyLibrary
                     data.flags = FLAGS.None;
                     data.name = n;
                     data.comment = "";
+                        data.datetime = DateTime.Now;
                     current.dataBase.TryAdd (n, data);
 
                     bModifyed = true;
                 }
 
                 current = data;
+            }
             }
 
             return current;
@@ -211,6 +226,9 @@ namespace DnsProxyLibrary
             DataBase data;
             string[] hosts = host.Split('.');
 
+
+            lock (this)
+            {
             for (int i = 0; i < hosts.Length; i++)
             {
                 string n = hosts[hosts.Length - i - 1];
@@ -227,11 +245,25 @@ namespace DnsProxyLibrary
 
             if (result)
             {
+                    DataBase p = current.parent;
+                    if (p.dataBase.TryRemove (current.name, out data))
+                    {
+                        DBG.MSG("DataBase.Del - success.{0}\n", current.name);
+                    }
+                    else
+                    {
+                        DBG.MSG("DataBase.Del - failed.{0}\n", current.name);
+                        Debug.Assert (false);
+                    }
+
+                    bModifyed = true;
+#if false
+                    
                 current = current.parent;
 
                 for (int i = 0; i < hosts.Length; i++)
                 {
-                    string n = hosts[hosts.Length - i - 1];
+                        string n = hosts[i];
 
                     if (!current.dataBase.TryRemove (n, out data))
                     {
@@ -246,6 +278,8 @@ namespace DnsProxyLibrary
                     current = current.parent;
                 }
 
+#endif
+                }
             }
 
 
@@ -314,9 +348,13 @@ namespace DnsProxyLibrary
 
                             if (str == "0")
                             {
-                                flags = FLAGS.Accept;
+                                flags = FLAGS.None;
                             }
                             else if (str == "1")
+                            {
+                                flags = FLAGS.Accept;
+                            }
+                            else if (str == "2")
                             {
                                 flags = FLAGS.Reject;
                             }
@@ -372,6 +410,8 @@ namespace DnsProxyLibrary
         public void Import (string path)
         {
             DBG.MSG ("DataBase.Import - {0}\n", path);
+            lock (this)
+            {
 
             Clear ();
 
@@ -389,6 +429,7 @@ namespace DnsProxyLibrary
                 }
             }
             while (false);
+            }
 
 #if DEBUG
             //DUMP();
@@ -402,22 +443,35 @@ namespace DnsProxyLibrary
 
             do
             {
-                //name
+                //member data
                 if (!ReadStream (stream, out bytes))
                 {
                     break;
                 }
+
+                using (MemoryStream ms = new MemoryStream (bytes))
+                {
+                    //name
+                    if (ReadStream (ms, out bytes))
+                    {
                 this.name = Encoding.Default.GetString (bytes, 0, bytes.Length);
+                    }
 
                 //comment
-                if (!ReadStream (stream, out bytes))
+                    if (ReadStream (ms, out bytes))
                 {
-                    break;
-                }
                 this.comment = Encoding.Default.GetString (bytes, 0, bytes.Length);
+                    }
 
                 //flags
-                this.flags = (FLAGS)stream.ReadByte ();
+                    this.flags = (FLAGS)ms.ReadByte ();
+
+                    //datetime
+                    if (ReadStream (ms, out bytes))
+                    {
+                        this.datetime = DateTime.FromBinary (BitConverter.ToInt64 (bytes, 0));
+                    }
+                }
 
 
                 //DBG.MSG ("DataBase.FromStream - name={0}\n", this.name);
@@ -475,28 +529,32 @@ namespace DnsProxyLibrary
             DBG.MSG ("DataBase.Export - {0} \n", path);
             byte[] bytes = null;
 
+            lock (this)
+            {
             using (FileStream stream = new FileStream (path, FileMode.OpenOrCreate, FileAccess.Write))
             {
                 bytes = Export();
 
+                    stream.SetLength (0);
                 stream.Write (bytes, 0, bytes.Length);
             }
+        }
         }
 
         private void ToStream (Stream stream)
         {
             byte[] bytes;
 
-            WriteStream (stream, this.name);
-            WriteStream (stream, this.comment);
+            using (MemoryStream ms = new MemoryStream ())
+            {
+                WriteStream (ms, this.name);
+                WriteStream (ms, this.comment);
+                ms.WriteByte ((byte)this.flags);
+                WriteStream (ms, this.datetime.ToBinary ());
+                
+                WriteStream (stream, ms.ToArray());
+            }
 
-            stream.WriteByte ((byte)this.flags);
-
-            //List<KeyValuePair<string, DataBase>> list = new List<KeyValuePair<string, DataBase>>();
-            //list = this.dataBase.ToList ();
-            //list.Sort (CompareDatabase);
-
-            //foreach (var v in list)
             foreach (var v in this.dataBase)
             {
                 using (MemoryStream ms = new MemoryStream (0))
@@ -566,6 +624,13 @@ namespace DnsProxyLibrary
                 WriteStream (stream, bytes);
             }
         }
+        static void WriteStream (Stream stream, long value)
+        {
+            byte[] bytes;
+
+            bytes = BitConverter.GetBytes(value);
+            WriteStream (stream, bytes);
+        }
 
         static void WriteStream (Stream stream, byte[] bytes)
         {
@@ -610,6 +675,59 @@ namespace DnsProxyLibrary
         }
 
 
+        public void Optimization (ref bool bModifyed)
+        {
+            lock (this)
+            {
+                List<string> list = new List<string> ();
+
+                foreach (var v in this.dataBase)
+                {
+                    if (!string.IsNullOrEmpty (v.Value.comment))
+                    {   continue;
+                    }
+
+                    if (Optimization (v.Value, ref bModifyed))
+                    {
+                        bModifyed = true;
+                        list.Add(v.Key);
+                    }
+                }
+
+                foreach (var v in list)
+                {
+                    this.dataBase.TryRemove(v, out DataBase dbTmp);
+                }
+            }
+        }
+        public bool Optimization (DataBase db, ref bool bModifyed)
+        {
+            List<string> list = new List<string> ();
+
+            foreach (var v in db.dataBase)
+            {
+                if (v.Value.flags != FLAGS.None)
+                {   continue;
+                }
+
+                if (!string.IsNullOrEmpty (v.Value.comment))
+                {   continue;
+                }
+
+                if (Optimization (v.Value, ref bModifyed))
+                {
+                    bModifyed = true;
+                    list.Add (v.Key);
+                }
+            }
+
+            foreach (var v in list)
+            {
+                db.dataBase.TryRemove(v, out DataBase dbTmp);
+            }
+
+            return (db.dataBase.Count == 0);
+        }
 
 
     }

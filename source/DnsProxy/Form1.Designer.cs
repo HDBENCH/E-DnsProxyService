@@ -38,6 +38,7 @@
             this.proxyEnableToolStripMenuItem = new System.Windows.Forms.ToolStripMenuItem();
             this.toolStripSeparator2 = new System.Windows.Forms.ToolStripSeparator();
             this.cacheClearToolStripMenuItem = new System.Windows.Forms.ToolStripMenuItem();
+            this.databaseOptimizationToolStripMenuItem = new System.Windows.Forms.ToolStripMenuItem();
             this.viewToolStripMenuItem = new System.Windows.Forms.ToolStripMenuItem();
             this.allToolStripMenuItem = new System.Windows.Forms.ToolStripMenuItem();
             this.acceptToolStripMenuItem = new System.Windows.Forms.ToolStripMenuItem();
@@ -67,6 +68,7 @@
             this.treeView1.HideSelection = false;
             this.treeView1.Location = new System.Drawing.Point(0, 0);
             this.treeView1.Name = "treeView1";
+            this.treeView1.ShowNodeToolTips = true;
             this.treeView1.Size = new System.Drawing.Size(462, 553);
             this.treeView1.TabIndex = 0;
             this.treeView1.MouseDown += new System.Windows.Forms.MouseEventHandler(this.treeviewMouseDown);
@@ -141,7 +143,8 @@
             this.optionToolStripMenuItem.DropDownItems.AddRange(new System.Windows.Forms.ToolStripItem[] {
             this.proxyEnableToolStripMenuItem,
             this.toolStripSeparator2,
-            this.cacheClearToolStripMenuItem});
+            this.cacheClearToolStripMenuItem,
+            this.databaseOptimizationToolStripMenuItem});
             this.optionToolStripMenuItem.Name = "optionToolStripMenuItem";
             this.optionToolStripMenuItem.Size = new System.Drawing.Size(56, 20);
             this.optionToolStripMenuItem.Text = "&Option";
@@ -149,21 +152,28 @@
             // proxyEnableToolStripMenuItem
             // 
             this.proxyEnableToolStripMenuItem.Name = "proxyEnableToolStripMenuItem";
-            this.proxyEnableToolStripMenuItem.Size = new System.Drawing.Size(158, 22);
+            this.proxyEnableToolStripMenuItem.Size = new System.Drawing.Size(193, 22);
             this.proxyEnableToolStripMenuItem.Text = "Proxy &Enable";
             this.proxyEnableToolStripMenuItem.Click += new System.EventHandler(this.contextMenu_ProxyEnable);
             // 
             // toolStripSeparator2
             // 
             this.toolStripSeparator2.Name = "toolStripSeparator2";
-            this.toolStripSeparator2.Size = new System.Drawing.Size(155, 6);
+            this.toolStripSeparator2.Size = new System.Drawing.Size(190, 6);
             // 
             // cacheClearToolStripMenuItem
             // 
             this.cacheClearToolStripMenuItem.Name = "cacheClearToolStripMenuItem";
-            this.cacheClearToolStripMenuItem.Size = new System.Drawing.Size(158, 22);
+            this.cacheClearToolStripMenuItem.Size = new System.Drawing.Size(193, 22);
             this.cacheClearToolStripMenuItem.Text = "&Dns Cache Clear";
             this.cacheClearToolStripMenuItem.Click += new System.EventHandler(this.contextMenu_DnsClear);
+            // 
+            // databaseOptimizationToolStripMenuItem
+            // 
+            this.databaseOptimizationToolStripMenuItem.Name = "databaseOptimizationToolStripMenuItem";
+            this.databaseOptimizationToolStripMenuItem.Size = new System.Drawing.Size(193, 22);
+            this.databaseOptimizationToolStripMenuItem.Text = "Database &Optimization";
+            this.databaseOptimizationToolStripMenuItem.Click += new System.EventHandler(this.contextMenu_DB_Optimization);
             // 
             // viewToolStripMenuItem
             // 
@@ -341,6 +351,7 @@
         private System.Windows.Forms.ToolStripMenuItem scrollToolStripMenuItem;
         private System.Windows.Forms.ToolStripSeparator toolStripSeparator3;
         private System.Windows.Forms.ToolStripStatusLabel toolStripStatusScroll;
+        private System.Windows.Forms.ToolStripMenuItem databaseOptimizationToolStripMenuItem;
     }
 }
 

@@ -52,13 +52,6 @@ namespace DnsProxyAdmin
         public Form1 ()
         {
             InitializeComponent ();
-
-            //string path = "D:\\_TOOL\\CDnsProxyServer\\Hosts\\";
-            //string path = System.AppDomain.CurrentDomain.BaseDirectory;
-
-            //dataBase.Import(path + "database");
-            //dataBase.Export (path + "database");
-
         }
 
         private void Form1_Load (object sender, EventArgs e)
@@ -364,6 +357,15 @@ namespace DnsProxyAdmin
             //DBG.MSG ("Form1.TreeInitialize - {0}:{1}//{2}\n", db.GetFlags().ToString().PadRight(7), db.GetName().PadRight(20), db.GetComment());
             TreeNode newNode = new TreeNode(db.GetName());
 
+            if (string.IsNullOrEmpty (db.GetComment ()))
+            {
+                newNode.ToolTipText = string.Format ("{0}", db.GetDatetime ());
+            }
+            else
+            {
+                newNode.ToolTipText = string.Format ("{0} : {1}", db.GetDatetime (), db.GetComment ());
+            }
+
             this.hostNameToNodeDic.TryAdd(db.GetFullName(), newNode);
             this.nodeToHostNameDic.TryAdd(newNode, db.GetFullName());
 
@@ -450,11 +452,18 @@ namespace DnsProxyAdmin
                         }
 
                         n = new TreeNode(h);
+                        if (string.IsNullOrEmpty (db.GetComment ()))
+                        {
+                            n.ToolTipText = string.Format ("{0}", db.GetDatetime ());
+                        }
+                        else
+                        {
+                            n.ToolTipText = string.Format ("{0} : {1}", db.GetDatetime (), db.GetComment ());
+                        }
+                        node.Nodes.Insert(index, n);
 
                         this.hostNameToNodeDic.TryAdd(db.GetFullName(), n);
                         this.nodeToHostNameDic.TryAdd(n, db.GetFullName());
-
-                        node.Nodes.Insert(index, n);
             
                         treeImageIndexUpdate(n);
                     }
@@ -566,6 +575,12 @@ namespace DnsProxyAdmin
         {
             Close ();
         }
+
+        void contextMenu_DB_Optimization (object sender, EventArgs e)
+        {
+            this.dnsProxyClient.DataBaseOptimization();
+        }
+
         void contextMenu_Comment (object sender, EventArgs e)
         {
             ToolStripMenuItem item = sender as ToolStripMenuItem;
@@ -581,6 +596,15 @@ namespace DnsProxyAdmin
             }
 
         }
+
+        void contextMenu_Delete (object sender, EventArgs e)
+        {
+            ToolStripMenuItem item = sender as ToolStripMenuItem;
+            string host = item.Tag as string;
+
+            dnsProxyClient.DataBaseDel(host);
+        }
+
         void contextMenu_None (object sender, EventArgs e)
         {
             change_DataBaseFlags(sender as ToolStripMenuItem, DataBase.FLAGS.None);
@@ -1030,6 +1054,7 @@ namespace DnsProxyAdmin
             ToolStripMenuItem ignoreMenu;
             ToolStripMenuItem copyMenu;
             ToolStripMenuItem commentMenu;
+            ToolStripMenuItem deleteMenu;
 
             while (db != null)
             {
@@ -1039,7 +1064,8 @@ namespace DnsProxyAdmin
                 rejectMenu = new ToolStripMenuItem ("&Reject");
                 ignoreMenu = new ToolStripMenuItem ("&Ignore");
                 copyMenu = new ToolStripMenuItem ("&Copy");
-                commentMenu = new ToolStripMenuItem ("C&omment");
+                commentMenu = new ToolStripMenuItem ("&Edit Comment");
+                deleteMenu = new ToolStripMenuItem ("&Delete");
 
                 noneMenu.Tag = db;
                 acceptMenu.Tag = db;
@@ -1047,6 +1073,7 @@ namespace DnsProxyAdmin
                 ignoreMenu.Tag = db;
                 copyMenu.Tag = db.GetFullName();
                 commentMenu.Tag = db;
+                deleteMenu.Tag = db.GetFullName();
 
                 noneMenu.Click += contextMenu_None;
                 acceptMenu.Click += contextMenu_Accept;
@@ -1054,6 +1081,7 @@ namespace DnsProxyAdmin
                 ignoreMenu.Click += contextMenu_Ignore;
                 copyMenu.Click += contextMenu_Copy;
                 commentMenu.Click += contextMenu_Comment;
+                deleteMenu.Click += contextMenu_Delete;
 
                 switch (db.GetFlags ())
                 {
@@ -1088,9 +1116,9 @@ namespace DnsProxyAdmin
 
                 menu.DropDownItems.AddRange (new ToolStripMenuItem[] { noneMenu, acceptMenu, rejectMenu, ignoreMenu});
                 menu.DropDownItems.Add (new ToolStripSeparator ());
-                menu.DropDownItems.AddRange (new ToolStripMenuItem[] { commentMenu });
+                menu.DropDownItems.AddRange (new ToolStripMenuItem[] { copyMenu, commentMenu });
                 menu.DropDownItems.Add (new ToolStripSeparator ());
-                menu.DropDownItems.AddRange (new ToolStripMenuItem[] { copyMenu });
+                menu.DropDownItems.AddRange (new ToolStripMenuItem[] { deleteMenu });
 
                 rootMenu.Items.AddRange (new ToolStripMenuItem[] { menu });
 
@@ -1107,7 +1135,8 @@ namespace DnsProxyAdmin
                 rootMenu.Items.Add (new ToolStripSeparator ());
             }
 
-            rootMenu.Items.AddRange (new ToolStripMenuItem[] { MenuCopy(logClearToolStripMenuItem), MenuCopy(cacheClearToolStripMenuItem) });
+            //rootMenu.Items.AddRange (new ToolStripMenuItem[] { MenuCopy(logClearToolStripMenuItem), MenuCopy(cacheClearToolStripMenuItem) });
+            rootMenu.Items.AddRange (new ToolStripMenuItem[] { MenuCopy(logClearToolStripMenuItem) });
 
             rootMenu.Show (control, new System.Drawing.Point (x, y));
         }
@@ -1147,7 +1176,58 @@ namespace DnsProxyAdmin
                     Invoke (new Action<bool> (MenuEnable), false);
                 }
             }
+        }
 
+        void treeEnumNode (TreeNode node, ref List<string> hostList, ref List<TreeNode> nodeList)
+        {
+            nodeList.Add(node);
+            hostList.Add (NodeToHostName(node));
+
+            foreach (var v in node.Nodes)
+            {
+                TreeNode n = v as TreeNode;
+                if (n != null)
+                {
+                    treeEnumNode(n, ref hostList, ref nodeList);
+                }
+            }
+        }
+
+        void treeDelete (string host)
+        {
+            TreeNode node = HostNameToNode(host);
+            string[] hosts = host.Split ('.');
+            List<string> hostList = new List<string>();
+            List<TreeNode> nodeList = new List<TreeNode>();
+            
+            if (node != null)
+            {
+                treeEnumNode(node, ref hostList, ref nodeList);
+
+                foreach (var v in hostList)
+                {
+                    if (!this.hostNameToNodeDic.TryRemove (v, out TreeNode t))
+                    {
+                        Debug.Assert(false);
+                    }
+                }
+                foreach (var v in nodeList)
+                {
+                    if (!this.nodeToHostNameDic.TryRemove (v, out string h))
+                    {
+                        Debug.Assert (false);
+                    }
+                }
+                if (node.Parent != null)
+                {
+                    TreeNode nodeParent = node.Parent;
+                    nodeParent.Nodes.Remove (node);
+                }
+                else
+                {
+                    this.treeView1.Nodes.Remove (node);
+                }
+            }
         }
 
 
@@ -1220,37 +1300,10 @@ namespace DnsProxyAdmin
 
             case CMD.DEL:
                 {
-                    string host = cmd.GetString();
 
                     DBG.MSG("Form1.PipeReceive - {0}, {1}\n", cmd.GetCMD(), cmd.GetString());
+                    Invoke (new Action<string> (treeDelete), cmd.GetString());
 
-                    TreeNode node = HostNameToNode(host);
-                    if (node != null)
-                    {
-                        node.Parent.Nodes.Remove(node);
-
-                        List<string> HostList = new List<string>();
-                        List<TreeNode> nodeList = new List<TreeNode>();
-
-                        foreach (var v in this.hostNameToNodeDic)
-                        {
-                            if (v.Key.IndexOf (host) == 0)
-                            {
-                                DBG.MSG("Form1.PipeReceive - {0}, DEL({1})\n", cmd.GetCMD(), host);
-
-                                HostList.Add (v.Key);
-                                nodeList.Add (v.Value);
-                            }
-                        }
-                        foreach (var v in HostList)
-                        {
-                            this.hostNameToNodeDic.TryRemove(v, out TreeNode t);
-                        }
-                        foreach (var v in nodeList)
-                        {
-                            this.nodeToHostNameDic.TryRemove(v, out string h);
-                        }
-                    }
                 }
                 break;
 
@@ -1291,6 +1344,35 @@ namespace DnsProxyAdmin
                 break;
 
             case CMD.COMMENT:
+            case CMD.DATETIME:
+                {
+                    string host = cmd.GetString ();
+
+                    if (!this.hostNameToNodeDic.TryGetValue (host, out TreeNode node))
+                    {
+                        break;
+                    }
+
+                    string comment = Encoding.Default.GetString (bytes_value, 0, bytes_value.Length);
+
+                    DataBase db = dnsProxyClient.FindDataBase (host);
+                    if (db == null)
+                    {
+                        break;
+                    }
+
+                    if (string.IsNullOrEmpty (db.GetComment ()))
+                    {
+                        node.ToolTipText = string.Format ("{0}", db.GetDatetime ());
+                    }
+                    else
+                    {
+                        node.ToolTipText = string.Format ("{0} : {1}", db.GetDatetime (), db.GetComment ());
+                    }
+                }
+                break;
+
+            case CMD.DB_OPTIMIZATION:
                 {
                 }
                 break;

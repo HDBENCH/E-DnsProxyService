@@ -530,11 +530,17 @@ namespace DnsProxyLibrary
                 bool bMod= false;
                 DataBase db = this.dataBase.Find(v.Name, true, ref bMod);
                 string comment = db.GetComment();
+                db.UpdateDatetime();
 
                 if (bMod)
                 {
                     this.bModifyed = true;
                     byte[] b = Command.Create(CMD.ADD, new byte[] { (byte)db.GetFlags() }, db.GetFullName());
+                    this.namedPipe.WriteDataAsync (b, 0, b.Length);
+                }
+                else
+                {
+                    byte[] b = Command.Create(CMD.DATETIME, null, db.GetFullName());
                     this.namedPipe.WriteDataAsync (b, 0, b.Length);
                 }
 
@@ -877,6 +883,23 @@ namespace DnsProxyLibrary
                         {
                             this.bModifyed = true;
                             this.namedPipe.WriteDataAsync (bytes, 0, bytes.Length);
+                        }
+                    }
+                    break;
+
+                case CMD.DB_OPTIMIZATION:
+                    {
+                        DBG.MSG ("DnsProxyServer.PipeReceive, {0}, {1}\n", cmd.GetCMD (), cmd.GetString ());
+                        bool bMod = false;
+
+                        this.dataBase.Optimization(ref bMod);
+                        if (bMod)
+                        {
+                            this.bModifyed = true;
+
+                            byte[] b = this.dataBase.Export();
+                            b = Command.Create (CMD.LOAD, b);
+                            this.namedPipe.WriteDataAsync (b, 0, b.Length);
                         }
                     }
                     break;

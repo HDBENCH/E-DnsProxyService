@@ -21,6 +21,8 @@ namespace DnsProxyLibrary
         ENABLE,
         DNS_CLEAR,
         COMMENT,
+        DB_OPTIMIZATION,
+        DATETIME,
     }
 
     public class Command
