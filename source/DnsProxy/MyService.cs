@@ -25,7 +25,8 @@ namespace DnsProxyService
         {
             string basePath = System.AppDomain.CurrentDomain.BaseDirectory;
 
-            server.Start(basePath, ServerConnectFunc, ServerReceiveFunc, null);
+            server.Start(basePath, ServerConnectFunc, ServerReceiveFunc, ServerStopFunc, null);
+
         }
 
         protected override void OnStop ()
@@ -33,14 +34,20 @@ namespace DnsProxyService
             server.Stop();
         }
 
-        static void ServerReceiveFunc (Command cmd, object param)
+        void ServerReceiveFunc (Command cmd, object param)
         {
             //DBG.MSG ("ServerReceiveFunc, {0}, {1} \n", cmd.GetCMD(), cmd.GetString());
         }
 
-        static void ServerConnectFunc (object param, bool bConnect)
+        void ServerConnectFunc (object param, bool bConnect)
         {
             //DBG.MSG ("ServerConnectFunc \n");
+        }
+
+        void ServerStopFunc (object param)
+        {
+            //DBG.MSG ("ServerStopFunc, {0}, {1} \n", cmd.GetCMD(), cmd.GetString());
+            Stop();
         }
     }
 }

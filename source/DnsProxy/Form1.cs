@@ -17,7 +17,7 @@ using System.Timers;
 using System.Xml.Linq;
 using static DnsProxyLibrary.DnsProtocol;
 using static System.Windows.Forms.VisualStyles.VisualStyleElement.ToolBar;
-using System.CodeDom;
+using Microsoft.Win32;
 
 namespace DnsProxyAdmin
 {
@@ -36,6 +36,7 @@ namespace DnsProxyAdmin
         private object listViewItemListLock = new object();
         private List<string> historyAddList = new List<string>();
         private List<string> setHistoryAddList = new List<string>();
+        private List<string> setHistoryDelList = new List<string>();
         private List<ListViewItem> listViewItemList;
         private List<ListViewItem> listViewItemAllList = new List<ListViewItem>();
         private List<ListViewItem> listViewItemAcceptList = new List<ListViewItem>();
@@ -66,7 +67,7 @@ namespace DnsProxyAdmin
             this.listViewImageList.Images.Add (Properties.Resources.LightReject);
             this.listViewImageList.Images.Add (Properties.Resources.Ignore);
             this.listViewImageList.Images.Add (Properties.Resources.LightIgnore);
-            this.treeView1.ImageList = listViewImageList;
+            this.treeView1.ImageList = this.listViewImageList;
 
 
             //ListView
@@ -87,7 +88,7 @@ namespace DnsProxyAdmin
             this.listView1.GetType ().InvokeMember ("DoubleBuffered",
                                                 BindingFlags.NonPublic | BindingFlags.Instance | BindingFlags.SetProperty,
                                                 null,
-                                                listView1,
+                                                this.listView1,
                                                 new object[] { true });
 
 
@@ -102,48 +103,84 @@ namespace DnsProxyAdmin
 
             //Menu
             ProxyEnable(false);
-            ViewScroll(true);
             MenuEnable(false);
 
+            ERegistry regkey = new ERegistry(Registry.CurrentUser, Common.regkey_name);
+
+            this.Bounds                 = (Rectangle)regkey.GetValue ("FormBounds"  , this.Bounds);
+            this.splitContainer1.SplitterDistance
+                                        = (int)regkey.GetValue ("SplitterDistance"  , this.splitContainer1.SplitterDistance);
+            this.columnTime.Width       = (int)regkey.GetValue ("columnTime"        , this.columnTime.Width);
+            this.columnType.Width       = (int)regkey.GetValue ("columnType"        , this.columnType.Width);
+            this.columnIp.Width         = (int)regkey.GetValue ("columnIp"          , this.columnIp.Width);
+            this.columnHost.Width       = (int)regkey.GetValue ("columnHost"        , this.columnHost.Width);
+            this.columnInfo.Width       = (int)regkey.GetValue ("columnInfo"        , this.columnInfo.Width);
+            this.columnComment.Width    = (int)regkey.GetValue ("columnComment"     , this.columnComment.Width);
+            this.bViewScroll            = (bool)regkey.GetValue ("ViewScroll", true);
+            regkey.Close ();
+
+            ViewScroll(this.bViewScroll);
             this.dnsProxyClient.Start (PipeConnect, PipeReceive, this);
         }
 
         private void Form1_FormClosed (object sender, FormClosedEventArgs e)
         {
+            ERegistry regkey = new ERegistry(Registry.CurrentUser, Common.regkey_name);
+
+            regkey.SetValue("FormBounds"        , (this.WindowState == FormWindowState.Normal) ? this.Bounds : this.RestoreBounds);
+            regkey.SetValue("SplitterDistance"  , this.splitContainer1.SplitterDistance);
+
+            regkey.SetValue ("columnTime"       , this.columnTime.Width);
+            regkey.SetValue ("columnType"       , this.columnType.Width);
+            regkey.SetValue ("columnIp"         , this.columnIp.Width);
+            regkey.SetValue ("columnHost"       , this.columnHost.Width);
+            regkey.SetValue ("columnInfo"       , this.columnInfo.Width);
+            regkey.SetValue ("columnComment"    , this.columnComment.Width);
+            regkey.SetValue ("ViewScroll"       , this.bViewScroll);
+            regkey.Close ();
+
             this.bIsClosing = true;
-            dnsProxyClient.Stop();
+            this.dnsProxyClient.Stop();
 
         }
 
 
         private void TimerEventProcessor(Object myObject, EventArgs myEventArgs)
         {
-            string[] array = null;
-            string[] array2 = null;
+            string[] historyAddArray = null;
+            string[] setHistoryAddArray = null;
+            string[] setHistoryDelArray = null;
+            int count = this.listViewItemList.Count;
+            bool bUpdate = false;
 
-            // 1回仮想モードに表示されるデータ数を0にすることで、別のデータを入れたときに全て更新されるようになる
             lock (this.listViewItemListLock)
             {
-                if (historyAddList.Count > 0)
+                if (this.historyAddList.Count > 0)
                 {
-                    array = new string[historyAddList.Count];
-                    historyAddList.CopyTo (array);
-                    historyAddList.Clear ();
+                    historyAddArray = new string[this.historyAddList.Count];
+                    this.historyAddList.CopyTo (historyAddArray);
+                    this.historyAddList.Clear ();
                 }
-                if (setHistoryAddList.Count > 0)
+                if (this.setHistoryAddList.Count > 0)
                 {
-                    array2 = new string[setHistoryAddList.Count];
-                    setHistoryAddList.CopyTo (array2);
-                    setHistoryAddList.Clear ();
+                    setHistoryAddArray = new string[this.setHistoryAddList.Count];
+                    this.setHistoryAddList.CopyTo (setHistoryAddArray);
+                    this.setHistoryAddList.Clear ();
+                }
+                if (this.setHistoryDelList.Count > 0)
+                {
+                    setHistoryDelArray = new string[this.setHistoryDelList.Count];
+                    this.setHistoryDelList.CopyTo (setHistoryDelArray);
+                    this.setHistoryDelList.Clear ();
                 }
             }
 
-            if (array != null)
+            if (historyAddArray != null)
             {
-                for (int i = 0; i < array.Count (); i++)
+                for (int i = 0; i < historyAddArray.Count (); i++)
                 {
                     HistoryData data = new HistoryData();
-                    data.FromString (array[i]);
+                    data.FromString (historyAddArray[i]);
 
                     ListViewItem item = new ListViewItem(data.ToArray());
                     item.Tag = data;
@@ -199,71 +236,122 @@ namespace DnsProxyAdmin
 
                     }
                 }
+            }
 
-                if (array2 != null)
+            if (setHistoryAddArray != null)
+            {
+                for (int i = 0; i < setHistoryAddArray.Count (); i++)
                 {
-                    for (int i = 0; i < array2.Count (); i++)
+                    HistoryData data = new HistoryData();
+                    data.FromString (setHistoryAddArray[i]);
+
+                    ListViewItem item = new ListViewItem(data.ToArray());
+                    item.Tag = data;
+
+                    lock (this.listViewItemListLock)
                     {
-                        HistoryData data = new HistoryData();
-                        data.FromString (array2[i]);
-
-                        ListViewItem item = new ListViewItem(data.ToArray());
-                        item.Tag = data;
-
-                        lock (this.listViewItemListLock)
-                        {
-                            this.listViewItemSetList.Add (item);
-                        }
+                        this.listViewItemSetList.Add (item);
                     }
                 }
+            }
 
-                int max_count = 2000;
-                if (listViewItemAllList.Count > max_count)
+            if (setHistoryDelArray != null)
+            {
+                List<ListViewItem> list = new List<ListViewItem>();
+                Dictionary<string, HistoryData> map = new Dictionary<string, HistoryData>();
+
+                for (int i = 0; i < setHistoryDelArray.Count (); i++)
                 {
-                    listViewItemAllList.RemoveRange (0, listViewItemAllList.Count - max_count);
-                }
-                if (listViewItemAcceptList.Count > max_count)
-                {
-                    listViewItemAcceptList.RemoveRange (0, listViewItemAcceptList.Count - max_count);
-                }
-                if (listViewItemRejectList.Count > max_count)
-                {
-                    listViewItemRejectList.RemoveRange (0, listViewItemRejectList.Count - max_count);
-                }
-                if (listViewItemIgnoreList.Count > max_count)
-                {
-                    listViewItemIgnoreList.RemoveRange (0, listViewItemIgnoreList.Count - max_count);
-                }
-                if (listViewItemAnswerList.Count > max_count)
-                {
-                    listViewItemAnswerList.RemoveRange (0, listViewItemAnswerList.Count - max_count);
-                }
-                if (listViewItemSetList.Count > max_count)
-                {
-                    listViewItemSetList.RemoveRange (0, listViewItemSetList.Count - max_count);
+                    HistoryData data = new HistoryData();
+                    data.FromString (setHistoryDelArray[i]);
+
+                    map.Add (data.ToString (), data);
                 }
 
+                lock (this.listViewItemListLock)
+                {
+                    foreach (var v in this.listViewItemSetList)
+                    {
+                        HistoryData d = v.Tag as HistoryData;
+                        if (d != null)
+                        {
+                            if (map.ContainsKey(d.ToString()))
+                            {
+                                list.Add (v);
+                            }
+                        }
+                    }
 
+                    foreach (var v in list)
+                    {
+                        this.listViewItemSetList.Remove (v);
+                    }
+
+                }
+            }
+
+            bUpdate = (count != this.listViewItemList.Count);
+
+            int max_count = 2000;
+            if (this.listViewItemAllList.Count > max_count)
+            {
+                this.listViewItemAllList.RemoveRange (0, this.listViewItemAllList.Count - max_count);
+            }
+            if (this.listViewItemAcceptList.Count > max_count)
+            {
+                this.listViewItemAcceptList.RemoveRange (0, this.listViewItemAcceptList.Count - max_count);
+            }
+            if (this.listViewItemRejectList.Count > max_count)
+            {
+                this.listViewItemRejectList.RemoveRange (0, this.listViewItemRejectList.Count - max_count);
+            }
+            if (this.listViewItemIgnoreList.Count > max_count)
+            {
+                this.listViewItemIgnoreList.RemoveRange (0, this.listViewItemIgnoreList.Count - max_count);
+            }
+            if (this.listViewItemAnswerList.Count > max_count)
+            {
+                this.listViewItemAnswerList.RemoveRange (0, this.listViewItemAnswerList.Count - max_count);
+            }
+            if (this.listViewItemSetList.Count > max_count)
+            {
+                this.listViewItemSetList.RemoveRange (0, this.listViewItemSetList.Count - max_count);
+            }
+
+            if (bUpdate)
+            {
                 UpdateListVew ();
             }
         }
 
         void UpdateListVew ()
         {
-            this.listView1.VirtualListSize = 0;
+            if ((this.listViewItemList.Count > 0) && (this.listView1.VirtualListSize == this.listViewItemList.Count))
+            {
+                this.listView1.VirtualListSize = this.listViewItemList.Count - 1; 
+            }
+        
             this.listView1.VirtualListSize = this.listViewItemList.Count;
+            
             if (this.bViewScroll && (this.listViewItemList.Count > 0))
             {
                 this.listView1.EnsureVisible (this.listViewItemList.Count - 1);
             }
-
         }
 
         private void listView1_RetrieveVirtualItem (object sender, RetrieveVirtualItemEventArgs e)
         {
             lock (this.listViewItemListLock)
             {
-                e.Item = this.listViewItemList[e.ItemIndex];
+                try
+                {
+                    e.Item = this.listViewItemList[e.ItemIndex];
+                }
+                catch (Exception ex)
+                {
+                    DBG.MSG("Form1.listView1_RetrieveVirtualItem - Exception, {0}\n", ex.Message);
+                }
+
             }
         }
 
@@ -400,7 +488,7 @@ namespace DnsProxyAdmin
 
             foreach (var v in list)
             {
-                nodes.Add(TreeInitialize(treeView1.TopNode, v.Value));
+                nodes.Add(TreeInitialize(this.treeView1.TopNode, v.Value));
             }
 
             this.treeView1.Nodes.AddRange(nodes.ToArray());
@@ -566,7 +654,7 @@ namespace DnsProxyAdmin
 
                 string host = db.GetFullName();
 
-                dnsProxyClient.DataBaseSet(flags, host);
+                this.dnsProxyClient.DataBaseSet(flags, host);
             }
             while (false);
         }
@@ -592,17 +680,24 @@ namespace DnsProxyAdmin
             DialogResult result = form.ShowDialog();
             if (result == DialogResult.OK)
             {
-                dnsProxyClient.DataBaseSetComment(db.GetFullName(), form.comment);
+                this.dnsProxyClient.DataBaseSetComment(db.GetFullName(), form.comment);
             }
 
         }
 
+        void contextMenu_DeleteSetlog (object sender, EventArgs e)
+        {
+            ToolStripMenuItem item = sender as ToolStripMenuItem;
+            HistoryData data = item.Tag as HistoryData;
+
+            this.dnsProxyClient.DataBaseDelSetlog(data);
+        }
         void contextMenu_Delete (object sender, EventArgs e)
         {
             ToolStripMenuItem item = sender as ToolStripMenuItem;
             string host = item.Tag as string;
 
-            dnsProxyClient.DataBaseDel(host);
+            this.dnsProxyClient.DataBaseDel(host);
         }
 
         void contextMenu_None (object sender, EventArgs e)
@@ -647,7 +742,7 @@ namespace DnsProxyAdmin
         }
         void contextMenu_DnsClear(object sender, EventArgs e)
         {
-            dnsProxyClient.DnsCacheClear ();
+            this.dnsProxyClient.DnsCacheClear ();
         }
         void contextMenu_LogClear(object sender, EventArgs e)
         {
@@ -667,14 +762,14 @@ namespace DnsProxyAdmin
             this.listViewItemList = this.listViewItemAllList;
             UpdateListVew ();
 
-            allToolStripMenuItem.CheckState = CheckState.Checked;
-            acceptToolStripMenuItem.CheckState = CheckState.Unchecked;
-            rejectToolStripMenuItem.CheckState = CheckState.Unchecked;
-            ignoreToolStripMenuItem.CheckState = CheckState.Unchecked;
-            answerToolStripMenuItem.CheckState = CheckState.Unchecked;
-            setToolStripMenuItem.CheckState = CheckState.Unchecked;
+            this.allToolStripMenuItem.CheckState = CheckState.Checked;
+            this.acceptToolStripMenuItem.CheckState = CheckState.Unchecked;
+            this.rejectToolStripMenuItem.CheckState = CheckState.Unchecked;
+            this.ignoreToolStripMenuItem.CheckState = CheckState.Unchecked;
+            this.answerToolStripMenuItem.CheckState = CheckState.Unchecked;
+            this.setToolStripMenuItem.CheckState = CheckState.Unchecked;
 
-            toolStripStatusView.Text = "All View";
+            this.toolStripStatusView.Text = "All View";
         }
 
         void contextMenu_ViewAccept(object sender, EventArgs e)
@@ -682,70 +777,70 @@ namespace DnsProxyAdmin
             this.listViewItemList = this.listViewItemAcceptList;
             UpdateListVew ();
 
-            allToolStripMenuItem.CheckState = CheckState.Unchecked;
-            acceptToolStripMenuItem.CheckState = CheckState.Checked;
-            rejectToolStripMenuItem.CheckState = CheckState.Unchecked;
-            ignoreToolStripMenuItem.CheckState = CheckState.Unchecked;
-            answerToolStripMenuItem.CheckState = CheckState.Unchecked;
-            setToolStripMenuItem.CheckState = CheckState.Unchecked;
+            this.allToolStripMenuItem.CheckState = CheckState.Unchecked;
+            this.acceptToolStripMenuItem.CheckState = CheckState.Checked;
+            this.rejectToolStripMenuItem.CheckState = CheckState.Unchecked;
+            this.ignoreToolStripMenuItem.CheckState = CheckState.Unchecked;
+            this.answerToolStripMenuItem.CheckState = CheckState.Unchecked;
+            this.setToolStripMenuItem.CheckState = CheckState.Unchecked;
 
-            toolStripStatusView.Text = "Accept View";
+            this.toolStripStatusView.Text = "Accept View";
         }
         void contextMenu_ViewReject(object sender, EventArgs e)
         {
             this.listViewItemList = this.listViewItemRejectList;
             UpdateListVew ();
 
-            allToolStripMenuItem.CheckState = CheckState.Unchecked;
-            acceptToolStripMenuItem.CheckState = CheckState.Unchecked;
-            rejectToolStripMenuItem.CheckState = CheckState.Checked;
-            ignoreToolStripMenuItem.CheckState = CheckState.Unchecked;
-            answerToolStripMenuItem.CheckState = CheckState.Unchecked;
-            setToolStripMenuItem.CheckState = CheckState.Unchecked;
+            this.allToolStripMenuItem.CheckState = CheckState.Unchecked;
+            this.acceptToolStripMenuItem.CheckState = CheckState.Unchecked;
+            this.rejectToolStripMenuItem.CheckState = CheckState.Checked;
+            this.ignoreToolStripMenuItem.CheckState = CheckState.Unchecked;
+            this.answerToolStripMenuItem.CheckState = CheckState.Unchecked;
+            this.setToolStripMenuItem.CheckState = CheckState.Unchecked;
 
-            toolStripStatusView.Text = "Reject View";
+            this.toolStripStatusView.Text = "Reject View";
         }
         void contextMenu_ViewIgnore(object sender, EventArgs e)
         {
             this.listViewItemList = this.listViewItemIgnoreList;
             UpdateListVew ();
 
-            allToolStripMenuItem.CheckState = CheckState.Unchecked;
-            acceptToolStripMenuItem.CheckState = CheckState.Unchecked;
-            rejectToolStripMenuItem.CheckState = CheckState.Unchecked;
-            ignoreToolStripMenuItem.CheckState = CheckState.Checked;
-            answerToolStripMenuItem.CheckState = CheckState.Unchecked;
-            setToolStripMenuItem.CheckState = CheckState.Unchecked;
+            this.allToolStripMenuItem.CheckState = CheckState.Unchecked;
+            this.acceptToolStripMenuItem.CheckState = CheckState.Unchecked;
+            this.rejectToolStripMenuItem.CheckState = CheckState.Unchecked;
+            this.ignoreToolStripMenuItem.CheckState = CheckState.Checked;
+            this.answerToolStripMenuItem.CheckState = CheckState.Unchecked;
+            this.setToolStripMenuItem.CheckState = CheckState.Unchecked;
 
-            toolStripStatusView.Text = "Ignore View";
+            this.toolStripStatusView.Text = "Ignore View";
         }
         void contextMenu_ViewAnswer(object sender, EventArgs e)
         {
             this.listViewItemList = this.listViewItemAnswerList;
             UpdateListVew ();
 
-            allToolStripMenuItem.CheckState = CheckState.Unchecked;
-            acceptToolStripMenuItem.CheckState = CheckState.Unchecked;
-            rejectToolStripMenuItem.CheckState = CheckState.Unchecked;
-            ignoreToolStripMenuItem.CheckState = CheckState.Unchecked;
-            answerToolStripMenuItem.CheckState = CheckState.Checked;
-            setToolStripMenuItem.CheckState = CheckState.Unchecked;
+            this.allToolStripMenuItem.CheckState = CheckState.Unchecked;
+            this.acceptToolStripMenuItem.CheckState = CheckState.Unchecked;
+            this.rejectToolStripMenuItem.CheckState = CheckState.Unchecked;
+            this.ignoreToolStripMenuItem.CheckState = CheckState.Unchecked;
+            this.answerToolStripMenuItem.CheckState = CheckState.Checked;
+            this.setToolStripMenuItem.CheckState = CheckState.Unchecked;
 
-            toolStripStatusView.Text = "Answer View";
+            this.toolStripStatusView.Text = "Answer View";
         }
         void contextMenu_ViewSet(object sender, EventArgs e)
         {
             this.listViewItemList = this.listViewItemSetList;
             UpdateListVew ();
 
-            allToolStripMenuItem.CheckState = CheckState.Unchecked;
-            acceptToolStripMenuItem.CheckState = CheckState.Unchecked;
-            rejectToolStripMenuItem.CheckState = CheckState.Unchecked;
-            ignoreToolStripMenuItem.CheckState = CheckState.Unchecked;
-            answerToolStripMenuItem.CheckState = CheckState.Unchecked;
-            setToolStripMenuItem.CheckState = CheckState.Checked;
+            this.allToolStripMenuItem.CheckState = CheckState.Unchecked;
+            this.acceptToolStripMenuItem.CheckState = CheckState.Unchecked;
+            this.rejectToolStripMenuItem.CheckState = CheckState.Unchecked;
+            this.ignoreToolStripMenuItem.CheckState = CheckState.Unchecked;
+            this.answerToolStripMenuItem.CheckState = CheckState.Unchecked;
+            this.setToolStripMenuItem.CheckState = CheckState.Checked;
 
-            toolStripStatusView.Text = "Set View";
+            this.toolStripStatusView.Text = "Set View";
         }
 
         void contextMenu_ViewScroll (object sender, EventArgs e)
@@ -756,7 +851,7 @@ namespace DnsProxyAdmin
         {
             this.bViewScroll = bEnable;
 
-            scrollToolStripMenuItem.Checked = this.bViewScroll;
+            this.scrollToolStripMenuItem.Checked = this.bViewScroll;
             if (this.bViewScroll)
             {
                 this.toolStripStatusScroll.BackColor = Color.LightGreen;
@@ -771,7 +866,7 @@ namespace DnsProxyAdmin
 
         void contextMenu_ProxyEnable(object sender, EventArgs e)
         {
-            this.dnsProxyClient.ProxyEnable(!proxyEnableToolStripMenuItem.Checked);
+            this.dnsProxyClient.ProxyEnable(!this.proxyEnableToolStripMenuItem.Checked);
         }
 
 #if false
@@ -913,9 +1008,9 @@ namespace DnsProxyAdmin
 
                 ContextMenuStrip Menu = new ContextMenuStrip ();
 
-                Menu.Items.AddRange (new ToolStripMenuItem[] { MenuCopy(proxyEnableToolStripMenuItem) });
+                Menu.Items.AddRange (new ToolStripMenuItem[] { MenuCopy(this.proxyEnableToolStripMenuItem) });
 
-                Menu.Show (this.statusStrip1, new System.Drawing.Point (toolStripStatusEnabled.Bounds.X + e.X, toolStripStatusEnabled.Bounds.Y + e.Y));
+                Menu.Show (this.statusStrip1, new System.Drawing.Point (this.toolStripStatusEnabled.Bounds.X + e.X, this.toolStripStatusEnabled.Bounds.Y + e.Y));
             }
             while (false);
         }
@@ -931,11 +1026,11 @@ namespace DnsProxyAdmin
 
                 ContextMenuStrip Menu = new ContextMenuStrip ();
 
-                Menu.Items.AddRange (new ToolStripMenuItem[] { MenuCopy(allToolStripMenuItem), MenuCopy(acceptToolStripMenuItem), MenuCopy(rejectToolStripMenuItem), MenuCopy(ignoreToolStripMenuItem), MenuCopy(answerToolStripMenuItem), MenuCopy(setToolStripMenuItem) });
+                Menu.Items.AddRange (new ToolStripMenuItem[] { MenuCopy(this.allToolStripMenuItem), MenuCopy(this.acceptToolStripMenuItem), MenuCopy(this.rejectToolStripMenuItem), MenuCopy(this.ignoreToolStripMenuItem), MenuCopy(this.answerToolStripMenuItem), MenuCopy(this.setToolStripMenuItem) });
                 Menu.Items.Add (new ToolStripSeparator ());
-                Menu.Items.AddRange (new ToolStripMenuItem[] { MenuCopy(logClearToolStripMenuItem) });
+                Menu.Items.AddRange (new ToolStripMenuItem[] { MenuCopy(this.logClearToolStripMenuItem) });
 
-                Menu.Show (this.statusStrip1, new System.Drawing.Point (toolStripStatusView.Bounds.X + e.X, toolStripStatusView.Bounds.Y + e.Y));
+                Menu.Show (this.statusStrip1, new System.Drawing.Point (this.toolStripStatusView.Bounds.X + e.X, this.toolStripStatusView.Bounds.Y + e.Y));
             }
             while (false);
         }
@@ -951,9 +1046,9 @@ namespace DnsProxyAdmin
 
                 ContextMenuStrip Menu = new ContextMenuStrip ();
 
-                Menu.Items.AddRange (new ToolStripMenuItem[] { MenuCopy(scrollToolStripMenuItem) });
+                Menu.Items.AddRange (new ToolStripMenuItem[] { MenuCopy(this.scrollToolStripMenuItem) });
 
-                Menu.Show (this.statusStrip1, new System.Drawing.Point (toolStripStatusScroll.Bounds.X + e.X, toolStripStatusScroll.Bounds.Y + e.Y));
+                Menu.Show (this.statusStrip1, new System.Drawing.Point (this.toolStripStatusScroll.Bounds.X + e.X, this.toolStripStatusScroll.Bounds.Y + e.Y));
             }
             while (false);
         }
@@ -1037,12 +1132,31 @@ namespace DnsProxyAdmin
                 }
 
                 historyData = item.Tag as HistoryData;
-                DataBase db = dnsProxyClient.FindDataBase(historyData.host);
 
-                ShowContextMenu(db, this.listView1, e.X, e.Y);
+                if (this.listViewItemList == this.listViewItemSetList)
+                {
+                    ShowContextMenuSetView (historyData, this.listView1, e.X, e.Y);
+                }
+                else
+                {
+                    DataBase db = this.dnsProxyClient.FindDataBase(historyData.host);
+                    ShowContextMenu (db, this.listView1, e.X, e.Y);
+                }
             }
             while (false);
 
+        }
+
+        void ShowContextMenuSetView (HistoryData data, Control control, int x, int y)
+        {
+            ContextMenuStrip rootMenu = new ContextMenuStrip ();
+            ToolStripMenuItem deleteMenu;
+
+            deleteMenu = new ToolStripMenuItem ("&Delete");
+            deleteMenu.Tag = data;
+            deleteMenu.Click += contextMenu_DeleteSetlog;
+            rootMenu.Items.AddRange (new ToolStripMenuItem[] { deleteMenu });
+            rootMenu.Show (control, new System.Drawing.Point (x, y));
         }
 
         void ShowContextMenu (DataBase db, Control control, int x, int y)
@@ -1135,8 +1249,7 @@ namespace DnsProxyAdmin
                 rootMenu.Items.Add (new ToolStripSeparator ());
             }
 
-            //rootMenu.Items.AddRange (new ToolStripMenuItem[] { MenuCopy(logClearToolStripMenuItem), MenuCopy(cacheClearToolStripMenuItem) });
-            rootMenu.Items.AddRange (new ToolStripMenuItem[] { MenuCopy(logClearToolStripMenuItem) });
+            rootMenu.Items.AddRange (new ToolStripMenuItem[] { MenuCopy(this.logClearToolStripMenuItem) });
 
             rootMenu.Show (control, new System.Drawing.Point (x, y));
         }
@@ -1163,14 +1276,14 @@ namespace DnsProxyAdmin
 
             if (bConnect)
             {
-                dnsProxyClient.Clear();
+                this.dnsProxyClient.Clear();
                 Invoke (new Action<bool> (MenuEnable), true);
             }
             else
             {
                 if (!this.bIsClosing)
                 {
-                    dnsProxyClient.Clear ();
+                    this.dnsProxyClient.Clear ();
                     Invoke (new Action<object, EventArgs> (contextMenu_LogClear), new object[] { null, null });
                     Invoke (new Action (TreeInitialize));
                     Invoke (new Action<bool> (MenuEnable), false);
@@ -1233,6 +1346,11 @@ namespace DnsProxyAdmin
 
         void PipeReceive (Command cmd, object param)
         {
+            if (this.bIsClosing)
+            {
+                return;
+            }
+
             byte[] bytes_value = cmd.GetData ();
 
             //DBG.MSG ("Form1.PipeReceive - {0}\n", cmd.GetCMD());
@@ -1323,7 +1441,7 @@ namespace DnsProxyAdmin
                 {
                     lock (this.listViewItemListLock)
                     {
-                        historyAddList.Add (cmd.GetString ());
+                        this.historyAddList.Add (cmd.GetString ());
                     }
                 }
                 break;
@@ -1332,7 +1450,7 @@ namespace DnsProxyAdmin
                 {
                     lock (this.listViewItemListLock)
                     {
-                        setHistoryAddList.Add (cmd.GetString ());
+                        this.setHistoryAddList.Add (cmd.GetString ());
                     }
                 }
                 break;
@@ -1355,7 +1473,7 @@ namespace DnsProxyAdmin
 
                     string comment = Encoding.Default.GetString (bytes_value, 0, bytes_value.Length);
 
-                    DataBase db = dnsProxyClient.FindDataBase (host);
+                    DataBase db = this.dnsProxyClient.FindDataBase (host);
                     if (db == null)
                     {
                         break;
@@ -1374,6 +1492,12 @@ namespace DnsProxyAdmin
 
             case CMD.DB_OPTIMIZATION:
                 {
+                }
+                break;
+
+            case CMD.DEL_SET_HISTORY:
+                {
+                    this.setHistoryDelList.Add (cmd.GetString ());
                 }
                 break;
 

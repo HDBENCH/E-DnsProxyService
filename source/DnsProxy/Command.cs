@@ -23,6 +23,7 @@ namespace DnsProxyLibrary
         COMMENT,
         DB_OPTIMIZATION,
         DATETIME,
+        DEL_SET_HISTORY,
     }
 
     public class Command

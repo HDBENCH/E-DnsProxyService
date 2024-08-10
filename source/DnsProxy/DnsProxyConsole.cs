@@ -20,7 +20,7 @@ namespace ConsoleApp
             string basePath = System.AppDomain.CurrentDomain.BaseDirectory;
 
             DnsProxyServer dnsProxyServer = new DnsProxyServer();
-            dnsProxyServer.Start (basePath, ServerConnectFunc, ServerReceiveFunc, null);
+            dnsProxyServer.Start (basePath, ServerConnectFunc, ServerReceiveFunc, ServerStopFunc, null);
 
             Console.CancelKeyPress += new ConsoleCancelEventHandler (Ctrl_C_Pressed);
 
@@ -57,6 +57,11 @@ namespace ConsoleApp
         static void ServerConnectFunc (object param, bool bConnect)
         {
             //DBG.MSG ("ServerConnectFunc - bConnect={0}\n", bConnect);
+        }
+
+        static void ServerStopFunc (object param)
+        {
+            //DBG.MSG ("ServerStopFunc - bConnect={0}\n", bConnect);
         }
     }
 }

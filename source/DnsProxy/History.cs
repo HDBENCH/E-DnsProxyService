@@ -9,7 +9,7 @@ using static DnsProxyLibrary.DataBase;
 
 namespace DnsProxyLibrary
 {
-    class HistoryData
+    public class HistoryData
     {
         public DateTime time;
         public FLAGS flags = FLAGS.None;
@@ -18,10 +18,15 @@ namespace DnsProxyLibrary
         public string info;
         public string comment;
 
+        public bool Equals (HistoryData other)
+        {
+            return (this.ToString () == other.ToString ());
+        }
+
         public override string ToString ()
         {
             string result = "";
-
+           
             result += string.Format ("{0}\t", this.time);
             result += string.Format ("{0}\t", this.flags);
             result += string.Format ("{0}\t", this.ip);

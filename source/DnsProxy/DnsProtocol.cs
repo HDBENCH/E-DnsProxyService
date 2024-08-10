@@ -102,10 +102,10 @@ namespace DnsProxyLibrary
         {
             public ushort TransactionID;
             public ushort Flags;
-            public ushort Questions;
-            public ushort Answers;
-            public ushort Authoritys;
-            public ushort Additionals;
+            public ushort questions;
+            public ushort answers;
+            public ushort authoritys;
+            public ushort additionals;
 
             public int Parse (byte[] bytes, int offset)
             {
@@ -116,17 +116,17 @@ namespace DnsProxyLibrary
 
                 this.TransactionID = DnsProtocol.ToUInt16 (bytes, 0);
                 this.Flags = DnsProtocol.ToUInt16 (bytes, 2);
-                this.Questions = DnsProtocol.ToUInt16 (bytes, 4);
-                this.Answers = DnsProtocol.ToUInt16 (bytes, 6);
-                this.Authoritys = DnsProtocol.ToUInt16 (bytes, 8);
-                this.Additionals = DnsProtocol.ToUInt16 (bytes, 10);
+                this.questions = DnsProtocol.ToUInt16 (bytes, 4);
+                this.answers = DnsProtocol.ToUInt16 (bytes, 6);
+                this.authoritys = DnsProtocol.ToUInt16 (bytes, 8);
+                this.additionals = DnsProtocol.ToUInt16 (bytes, 10);
 
                 DBG.MSG ("DnsProtocol.Question.Parse - TransactionID = 0x{0:X2}\n", this.TransactionID);
                 DBG.MSG ("DnsProtocol.Question.Parse - Flags         = 0x{0:X2}\n", this.Flags);
-                DBG.MSG ("DnsProtocol.Question.Parse - Questions     = {0}\n", this.Questions);
-                DBG.MSG ("DnsProtocol.Question.Parse - Answers       = {0}\n", this.Answers);
-                DBG.MSG ("DnsProtocol.Question.Parse - Authoritys    = {0}\n", this.Authoritys);
-                DBG.MSG ("DnsProtocol.Question.Parse - Additionals   = {0}\n", this.Additionals);
+                DBG.MSG ("DnsProtocol.Question.Parse - Questions     = {0}\n", this.questions);
+                DBG.MSG ("DnsProtocol.Question.Parse - Answers       = {0}\n", this.answers);
+                DBG.MSG ("DnsProtocol.Question.Parse - Authoritys    = {0}\n", this.authoritys);
+                DBG.MSG ("DnsProtocol.Question.Parse - Additionals   = {0}\n", this.additionals);
 
                 return (offset + 12);
             }
@@ -135,10 +135,10 @@ namespace DnsProxyLibrary
             {
                 DnsProtocol.ToStream (this.TransactionID, stream);
                 DnsProtocol.ToStream (this.Flags, stream);
-                DnsProtocol.ToStream (this.Questions, stream);
-                DnsProtocol.ToStream (this.Answers, stream);
-                DnsProtocol.ToStream (this.Authoritys, stream);
-                DnsProtocol.ToStream (this.Additionals, stream);
+                DnsProtocol.ToStream (this.questions, stream);
+                DnsProtocol.ToStream (this.answers, stream);
+                DnsProtocol.ToStream (this.authoritys, stream);
+                DnsProtocol.ToStream (this.additionals, stream);
             }
 
             public bool IsQuery ()
@@ -158,6 +158,18 @@ namespace DnsProxyLibrary
             {
                 this.Flags = (ushort) ((this.Flags & ~0x7800) | (value << 11));
             }
+
+            public void SetQuery ()
+            {
+                this.Flags = (ushort)(this.Flags & ~0x0080);
+            }
+
+            public void SetResponse()
+            {
+                this.Flags |= 0x80;
+            }
+
+
 
     //.... ..0. .... .... = Truncated: Message is not truncated
     //.... ...1 .... .... = Recursion desired: Do query recursively
@@ -582,9 +594,9 @@ namespace DnsProxyLibrary
 
         public Header header = new Header();
         public List<Question> questions = new List<Question>();
-        public List<RRecord> Answers = new List<RRecord>();
-        public List<RRecord> Authoritys = new List<RRecord>();
-        public List<RRecord> Additionals = new List<RRecord>();
+        public List<RRecord> answers = new List<RRecord>();
+        public List<RRecord> authoritys = new List<RRecord>();
+        public List<RRecord> additionals = new List<RRecord>();
 
 
         public int Parse (byte[] bytes)
@@ -597,7 +609,7 @@ namespace DnsProxyLibrary
             {
                 offset = this.header.Parse (bytes, 0);
 
-                for (int i = 0; i < this.header.Questions; i++)
+                for (int i = 0; i < this.header.questions; i++)
                 {
                     Question q = new Question();
 
@@ -606,32 +618,32 @@ namespace DnsProxyLibrary
                     this.questions.Add (q);
                 }
 
-                for (int i = 0; i < this.header.Answers; i++)
+                for (int i = 0; i < this.header.answers; i++)
                 {
                     RRecord a = new RRecord();
 
                     DBG.MSG ("DnsProtocol.Parse - Answer {0}, offset={1} --------------------------------\n", i + 1, offset);
                     offset = a.Parse (bytes, offset);
 
-                    this.Answers.Add (a);
+                    this.answers.Add (a);
                 }
 
-                for (int i = 0; i < this.header.Authoritys; i++)
+                for (int i = 0; i < this.header.authoritys; i++)
                 {
                     RRecord a = new RRecord();
 
                     DBG.MSG ("DnsProtocol.Parse - Authority {0}, offset={1} -----------------------------\n", i + 1, offset);
                     offset = a.Parse (bytes, offset);
-                    this.Authoritys.Add (a);
+                    this.authoritys.Add (a);
                 }
 
-                for (int i = 0; i < this.header.Additionals; i++)
+                for (int i = 0; i < this.header.additionals; i++)
                 {
                     RRecord a = new RRecord();
 
                     DBG.MSG ("DnsProtocol.Parse - Additional {0}, offset={1} ----------------------------\n", i + 1, offset);
                     offset = a.Parse (bytes, offset);
-                    this.Additionals.Add (a);
+                    this.additionals.Add (a);
                 }
             }
             catch (Exception e)
@@ -651,6 +663,11 @@ namespace DnsProxyLibrary
 
             using (MemoryStream stream = new MemoryStream (0))
             {
+                this.header.questions = (ushort)this.questions.Count;
+                this.header.answers = (ushort)this.answers.Count;
+                this.header.authoritys = (ushort)this.authoritys.Count;
+                this.header.additionals = (ushort)this.additionals.Count;
+
                 this.header.ToStream (stream);
 
                 foreach (var v in this.questions)
@@ -658,17 +675,17 @@ namespace DnsProxyLibrary
                     v.ToStream (stream);
                 }
 
-                foreach (var v in this.Answers)
+                foreach (var v in this.answers)
                 {
                     v.ToStream (stream);
                 }
 
-                foreach (var v in this.Authoritys)
+                foreach (var v in this.authoritys)
                 {
                     v.ToStream (stream);
                 }
 
-                foreach (var v in this.Additionals)
+                foreach (var v in this.additionals)
                 {
                     v.ToStream (stream);
                 }

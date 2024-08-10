@@ -19,7 +19,6 @@ namespace DnsProxyLibrary
         private NamedPipe namedPipe = new NamedPipe();
         private readonly DataBase dataBase = new DataBase();
         private bool bModifyed = false;
-        private readonly List<KeyValuePair<DataBase.FLAGS, string>> historyList = new List<KeyValuePair<DataBase.FLAGS, string>>();
 
         private ReceiveFunc _recvFunc;
         private ConnectFunc _connectFunc;
@@ -27,26 +26,11 @@ namespace DnsProxyLibrary
 
 
 
-        public List<KeyValuePair<DataBase.FLAGS, string>> GetHistory()
-        {
-            List<KeyValuePair<DataBase.FLAGS, string>> List = new List<KeyValuePair<DataBase.FLAGS, string>>();
 
-            lock (this.historyList)
-            {
-                List.AddRange (this.historyList);
-            }
-
-            return List;
-        }
 
         public void Clear()
         {
             this.dataBase.Clear();
-
-            lock (this.historyList)
-            {
-                this.historyList.Clear ();
-            }
         }
 
         public NamedPipe GetNamedPipe()
@@ -76,6 +60,11 @@ namespace DnsProxyLibrary
         public void DataBaseDel (string host)
         {
             byte[] bytes = Command.Create(CMD.DEL, null, host);
+            this.namedPipe.WriteDataAsync(bytes, 0, bytes.Length);
+        }
+        public void DataBaseDelSetlog (HistoryData data)
+        {
+            byte[] bytes = Command.Create(CMD.DEL_SET_HISTORY, null, data.ToString());
             this.namedPipe.WriteDataAsync(bytes, 0, bytes.Length);
         }
 
@@ -213,10 +202,6 @@ namespace DnsProxyLibrary
                         }
 
                         DBG.MSG("DnsProxyClient.PipeReceive - {0}, {1}, {2}\n", cmd.GetCMD(), (DataBase.FLAGS)bytes_value[0], cmd.GetString());
-                        lock (this.historyList)
-                        {
-                            this.historyList.Add (new KeyValuePair<DataBase.FLAGS, string> ((DataBase.FLAGS)bytes_value[0], cmd.GetString ()));
-                        }
                     }
                     break;
 
@@ -268,6 +253,11 @@ namespace DnsProxyLibrary
                         {
                             db.UpdateDatetime();
                         }
+                    }
+                    break;
+
+                case CMD.DEL_SET_HISTORY:
+                    {
                     }
                     break;
 
