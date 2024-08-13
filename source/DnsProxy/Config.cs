@@ -7,6 +7,8 @@ using System.Linq;
 using System.Text;
 using System.Threading.Tasks;
 using System.Diagnostics;
+using Microsoft.Win32;
+using System.ComponentModel;
 
 namespace DnsProxyLibrary
 {
@@ -14,19 +16,30 @@ namespace DnsProxyLibrary
     {
         public class Name
         {
-            public static readonly string base_path = "base_path";
-            public static readonly string dns_server = "dns_server";
+            public static readonly string server_dns_server         ="server_dns_server";
+            public static readonly string server_base_path          ="server_base_path";
+
+            public static readonly string admin_FormBounds          ="admin_FormBounds";
+            public static readonly string admin_SplitterDistance    ="admin_SplitterDistance";
+            public static readonly string admin_columnTime          ="admin_columnTime";
+            public static readonly string admin_columnType          ="admin_columnType";
+            public static readonly string admin_columnIp            ="admin_columnIp";
+            public static readonly string admin_columnHost          ="admin_columnHost";
+            public static readonly string admin_columnInfo          ="admin_columnInfo";
+            public static readonly string admin_columnComment       ="admin_columnComment";
+            public static readonly string admin_ViewScroll          ="admin_ViewScroll";
+            public static readonly string admin_ViewMode            ="admin_ViewMode";
+
         }
 
-        ConcurrentDictionary<string, string> config = new ConcurrentDictionary<string, string>();
-        bool bModifyed = false;
+        private Dictionary<string, string> config = new Dictionary<string, string>();
+        private List<string> list = new List<string>();
+        private bool bModifyed = false;
 
         public virtual void Initialize ()
         {
             this.config.Clear ();
-
-            Set (Name.dns_server, "8.8.8.8");
-            Set (Name.base_path, "");
+            this.list.Clear ();
 
             this.bModifyed = false;
         }
@@ -43,21 +56,32 @@ namespace DnsProxyLibrary
                     {
                         using (StreamReader reader = new StreamReader (fs))
                         {
-                            while (true)
+                            lock (this.config)
                             {
-                                string s =reader.ReadLine();
-                                if (s == null)
-                                {
-                                    break;
-                                }
+                                string s;
 
-                                string[] ss = s.Split ('=');
-                                if (ss.Length != 2)
+                                while ((s =reader.ReadLine()) != null)
                                 {
-                                    continue;
-                                }
+                                    s = s.TrimStart ();
 
-                                Set (ss[0], ss[1]);
+                                    if (s.IndexOf (';') == 0)
+                                    {
+                                        this.list.Add (s);
+                                        continue;
+                                    }
+
+                                    string[] ss = s.Split ('=');
+                                    if (ss.Length != 2)
+                                    {
+                                        continue;
+                                    }
+
+                                    this.config.Add (ss[0], ss[1]);
+                                    this.list.Add (ss[0]);
+                                    
+                                    DBG.MSG ("Config.Load - Add, {0}: {1}\n", ss[0], ss[1]);
+
+                                }
                             }
                         }
 
@@ -71,9 +95,9 @@ namespace DnsProxyLibrary
             }
         }
 
-        public virtual void Save (string path)
+        public virtual void Save (string path, bool bForce = false)
         {
-            if (!bModifyed)
+            if (!bModifyed && !bForce)
             {
                 return;
             }
@@ -88,10 +112,21 @@ namespace DnsProxyLibrary
 
                     using (StreamWriter writer = new StreamWriter (fs))
                     {
-
-                        foreach (var v in this.config)
+                        lock (this.config)
                         {
-                            writer.WriteLine (string.Format ("{0}={1}", v.Key, v.Value));
+                            foreach (var v in this.list)
+                            {
+                                if (v.IndexOf (';') == 0)
+                                {
+                                    writer.WriteLine (v);
+                                    continue;
+                                }
+
+                                if (this.config.TryGetValue (v, out string s))
+                                {
+                                    writer.WriteLine (string.Format ("{0}={1}", v, s));
+                                }
+                            }
                         }
                     }
                 }
@@ -105,30 +140,90 @@ namespace DnsProxyLibrary
 
         public bool ContainsKey (string key)
         {
-            return config.ContainsKey (key);
+            bool result;
+            lock (config)
+            {
+                result = config.ContainsKey (key);
+            }
+            return result;
         }
 
-        public bool Set (string key, string value)
+        public void SetValue (string key, object value)
         {
-            if (this.config.ContainsKey (key))
+            TypeConverter typeConverter = TypeDescriptor.GetConverter(value.GetType());
+
+            lock (this.config)
             {
-                this.config.TryRemove (key, out string v);
+                if (this.config.ContainsKey (key))
+                {
+                    this.config.Remove (key);
+                }
+                else
+                {
+                    this.list.Add (key);
+                }
+
+                if (typeConverter.CanConvertTo (typeof(string)))
+                {
+                    this.config.Add (key, typeConverter.ConvertToString (value));
+                }
+                else
+                {
+                    this.config.Add (key, value.ToString());
+                    Debug.Assert (false);
+                }
+
+                this.bModifyed = true;
+            }
+        }
+
+        public object GetValue (string key, object def_value)
+        {
+            TypeConverter typeConverter = TypeDescriptor.GetConverter(def_value.GetType());
+            object result = null;
+            bool r;
+            string value;
+
+
+            try
+            {
+                lock (this.config)
+                {
+                    if (r = this.config.TryGetValue (key, out value))
+                    {
+                        result = typeConverter.ConvertFromString (value);
+                    }
+                }
+            }
+            catch (Exception e)
+            {
+                DBG.MSG ("Config.GetValue - Exception({0})\n", e.Message);
+                Debug.Assert (false);
+                r = false;
             }
 
-            this.bModifyed = true;
-            return this.config.TryAdd (key, value);
+            if (!r)
+            {
+                SetValue (key, def_value);
+                result = def_value;
+            }
+
+            return result;
         }
 
-        public bool Get (string key, out string value)
+        public void DelValue (string key)
         {
-            this.bModifyed = true;
-            return this.config.TryGetValue (key, out value);
+            lock (this.config)
+            {
+                if (this.config.ContainsKey (key))
+                {
+                    this.config.Remove (key);
+                    //this.list.Remove (key);
+
+                    this.bModifyed = true;
+                }
+            }
         }
 
-        public bool Del (string key, out string value)
-        {
-            this.bModifyed = true;
-            return this.config.TryRemove (key, out value);
-        }
     }
 }

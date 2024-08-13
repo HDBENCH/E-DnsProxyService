@@ -689,7 +689,6 @@ namespace DnsProxyLibrary
 
                     if (Optimization (v.Value, ref bModifyed))
                     {
-                        bModifyed = true;
                         list.Add(v.Key);
                     }
                 }
@@ -697,6 +696,7 @@ namespace DnsProxyLibrary
                 foreach (var v in list)
                 {
                     this.dataBase.TryRemove(v, out DataBase dbTmp);
+                    bModifyed = true;
                 }
             }
         }
@@ -706,17 +706,19 @@ namespace DnsProxyLibrary
 
             foreach (var v in db.dataBase)
             {
-                if (v.Value.flags != FLAGS.None)
-                {   continue;
-                }
-
                 if (!string.IsNullOrEmpty (v.Value.comment))
                 {   continue;
                 }
 
-                if (Optimization (v.Value, ref bModifyed))
+                Optimization (v.Value, ref bModifyed);
+
+                if (v.Value.flags != FLAGS.None)
                 {
-                    bModifyed = true;
+                    continue;
+                }
+
+                if (v.Value.dataBase.Count == 0)
+                {
                     list.Add (v.Key);
                 }
             }
@@ -724,6 +726,7 @@ namespace DnsProxyLibrary
             foreach (var v in list)
             {
                 db.dataBase.TryRemove(v, out DataBase dbTmp);
+                bModifyed = true;
             }
 
             return (db.dataBase.Count == 0);

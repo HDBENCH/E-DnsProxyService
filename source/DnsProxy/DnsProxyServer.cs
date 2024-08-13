@@ -69,7 +69,6 @@ namespace DnsProxyLibrary
         private object _funcParam;
         private bool bProxyEnable = true;
         private bool bHostoryEnable = false;
-        private Config config = new Config();
 
 
         public void Start(string base_path, ConnectFunc connectFunc, ReceiveFunc recvFunc, StopFunc stopFunc, object funcParam)
@@ -671,22 +670,17 @@ namespace DnsProxyLibrary
 
         void Load()
         {
-            this.config.Load(this.configPath);
+            Config config = new Config();
 
-            if(this.config.Get(Config.Name.base_path, out string base_path))
+            config.Load(this.configPath);
+
+            string base_path = (string)config.GetValue(Config.Name.server_base_path, "");
+            if(Directory.Exists(base_path))
             {
-                if(Directory.Exists(base_path))
+                this.basePath = base_path;
+                if(this.basePath.Substring(this.basePath.Length - 1, 1) != "\\")
                 {
-                    this.basePath = base_path;
-                    if(this.basePath.Substring(this.basePath.Length - 1, 1) != "\\")
-                    {
-                        this.basePath += "\\";
-                        this.config.Set(Config.Name.base_path, this.basePath);
-                    }
-                }
-                else
-                {
-                    this.config.Set(Config.Name.base_path, this.basePath);
+                    this.basePath += "\\";
                 }
             }
 
@@ -700,21 +694,21 @@ namespace DnsProxyLibrary
             this.bSetHistoryModifyed = false;
 
             //DNS Server
-            this.remoteEP = new IPEndPoint(IPAddress.Parse("8.8.8.8"), 53);
-            if(this.config.Get(Config.Name.dns_server, out string dns_server))
+            string dns_server = (string)config.GetValue(Config.Name.server_dns_server, "8.8.8.8");
+            if (IPAddress.TryParse (dns_server, out IPAddress ipaddress))
             {
-                if(IPAddress.TryParse(dns_server, out IPAddress ipaddress))
-                {
-                    this.remoteEP = new IPEndPoint(ipaddress, 53);
-                }
+                this.remoteEP = new IPEndPoint (ipaddress, 53);
+            }
+            else
+            {
+                this.remoteEP = new IPEndPoint(IPAddress.Parse("8.8.8.8"), 53);
             }
 
+            config.Save(this.configPath, true);
         }
 
         public void Save()
         {
-            this.config.Save(this.configPath);
-
             lock(this.historyList)
             {
                 if(this.bModifyed)

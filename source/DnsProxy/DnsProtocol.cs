@@ -212,6 +212,13 @@ namespace DnsProxyLibrary
                 DnsProtocol.ToStream ((ushort)this.Type, stream);
                 DnsProtocol.ToStream ((ushort)this.Class, stream);
             }
+
+            public void Setup (string host, RRClass rrClass = RRClass.IN, RRType type = RRType.A)
+            {
+                this.Class = rrClass;
+                this.Type = type;
+                this.Name = host;
+            }
         }
 
         public abstract class typeBase
@@ -220,9 +227,6 @@ namespace DnsProxyLibrary
             public abstract int Parse (byte[] bytes, int offset, int DataLength);
             public abstract void ToStream (Stream stream);
             public abstract string ToDetail();
-
-            //public abstract ushort Length { get; }
-
         }
 
         public class typeA : typeBase
@@ -248,6 +252,10 @@ namespace DnsProxyLibrary
             {
                 return string.Format("{0}", this.AName.ToString());
             }
+            public void Setup (IPAddress aName)
+            {
+                this.AName = aName;
+            }
         }
 
         public class typeCNAME : typeBase
@@ -267,6 +275,10 @@ namespace DnsProxyLibrary
             public override string ToDetail()
             {
                 return string.Format("{0}", this.CName.ToString());
+            }
+            public void Setup (string cName)
+            {
+                this.CName = cName;
             }
         }
         public class typeSOA : typeBase
@@ -318,6 +330,17 @@ namespace DnsProxyLibrary
             {
                 return string.Format("{0}, {1}, {2}", this.MName.ToString(), this.RName.ToString(), this.Serial.ToString());
             }
+            public void Setup (string mName, string rName, uint serial, uint refresh, uint retry, uint expire, uint minimum)
+            {
+                this.MName      = mName;
+                this.RName      = rName;
+                this.Serial     = serial;
+                this.Refresh    = refresh;
+                this.Retry      = retry;
+                this.Expire     = expire;
+                this.Minimum    = minimum;
+            }
+
         }
         public class typeHTTPS : typeBase
         {
@@ -366,26 +389,38 @@ namespace DnsProxyLibrary
             {
                 return string.Format("{0}, {1}", this.TName.ToString(), this.SvcPriority.ToString());
             }
+            public void Setup (ushort svcPriority, string tName, List<SvcParam> svcParams)
+            {
+                this.SvcPriority    = svcPriority;
+                this.TName          = tName;
+                this.SvcParams      = new List<SvcParam>(svcParams);
+            }
+
         }
         public class typeOther : typeBase
         {
-            byte[] data;
+            byte[] Data;
 
             public override int Parse (byte[] bytes, int offset, int DataLength)
             {
-                data = new  byte[DataLength];
-                Buffer.BlockCopy(bytes, offset, this.data, 0, DataLength);
+                Data = new  byte[DataLength];
+                Buffer.BlockCopy(bytes, offset, this.Data, 0, DataLength);
                 offset += DataLength;
 
                 return offset;
             }
             public override void ToStream (Stream stream)
             {
-                DnsProtocol.ToStream (this.data, stream);
+                DnsProtocol.ToStream (this.Data, stream);
             }
             public override string ToDetail()
             {
                 return string.Format("");
+            }
+            public void Setup (byte[] data)
+            {
+                Data = new byte [data.Length];
+                Buffer.BlockCopy (data, 0, Data, 0, data.Length);
             }
         }
 
@@ -393,7 +428,7 @@ namespace DnsProxyLibrary
         {
             public ushort Key;
             public ushort Len;
-            public byte[] data;
+            public byte[] Data;
 
             public int Parse (byte[] bytes, int offset)
             {
@@ -402,8 +437,8 @@ namespace DnsProxyLibrary
                 this.Len = DnsProtocol.ToUInt16 (bytes, offset);
                 offset += sizeof (ushort);
 
-                this.data = new byte[this.Len];
-                Buffer.BlockCopy (bytes, offset, this.data, 0, this.Len);
+                this.Data = new byte[this.Len];
+                Buffer.BlockCopy (bytes, offset, this.Data, 0, this.Len);
                 offset += this.Len;
 
                 return offset;
@@ -412,7 +447,14 @@ namespace DnsProxyLibrary
             {
                 DnsProtocol.ToStream (this.Key, stream);
                 DnsProtocol.ToStream (this.Len, stream);
-                DnsProtocol.ToStream (this.data, stream);
+                DnsProtocol.ToStream (this.Data, stream);
+            }
+            public void Setup (ushort Key, ushort len, byte[] data)
+            {
+                this.Key = Key;
+                this.Len = len;
+                this.Data = new byte [data.Length];
+                Buffer.BlockCopy (data, 0, this.Data, 0, data.Length);
             }
 
         }
@@ -487,6 +529,15 @@ namespace DnsProxyLibrary
                 DnsProtocol.ToStream (this.DataLength, stream);
 
                 this.typeData.ToStream (stream);
+            }
+            public void Setup (RRClass rrClass, string name, RRType type, uint ttl, ushort dataLength, typeBase tData)
+            {
+                this.Class      = rrClass;
+                this.Name       = name;
+                this.Type       = type;
+                this.Ttl        = ttl;
+                this.DataLength = dataLength;
+                this.typeData   = tData;
             }
 
         }
@@ -586,7 +637,7 @@ namespace DnsProxyLibrary
         {
             DnsProtocol.ToStream (value.Key, stream);
             DnsProtocol.ToStream (value.Len, stream);
-            DnsProtocol.ToStream (value.data, stream);
+            DnsProtocol.ToStream (value.Data, stream);
         }
 
 
@@ -696,51 +747,23 @@ namespace DnsProxyLibrary
             return result;
         }
 
-
-
-
-
-
-
-
-
-        public static void TEST ()
+        public byte[] SetupQuery (string host, RRType rrType)
         {
-            byte[] data = {
-0x02, 0xda, 0x81, 0x80, 0x00, 0x01, 0x00, 0x07, 0x00, 0x00, 0x00, 0x00, 0x10, 0x63, 0x6f, 0x6e,
-0x74, 0x65, 0x6e, 0x74, 0x2d, 0x61, 0x75, 0x74, 0x6f, 0x66, 0x69, 0x6c, 0x6c, 0x0a, 0x67, 0x6f,
-0x6f, 0x67, 0x6c, 0x65, 0x61, 0x70, 0x69, 0x73, 0x03, 0x63, 0x6f, 0x6d, 0x00, 0x00, 0x01, 0x00,
-0x01, 0xc0, 0x0c, 0x00, 0x01, 0x00, 0x01, 0x00, 0x00, 0x00, 0x5e, 0x00, 0x04, 0xac, 0xd9, 0xa1,
-0xca, 0xc0, 0x0c, 0x00, 0x01, 0x00, 0x01, 0x00, 0x00, 0x00, 0x5e, 0x00, 0x04, 0x8e, 0xfa, 0x4c,
-0x8a, 0xc0, 0x0c, 0x00, 0x01, 0x00, 0x01, 0x00, 0x00, 0x00, 0x5e, 0x00, 0x04, 0x8e, 0xfa, 0xce,
-0xca, 0xc0, 0x0c, 0x00, 0x01, 0x00, 0x01, 0x00, 0x00, 0x00, 0x5e, 0x00, 0x04, 0xac, 0xd9, 0xa1,
-0xea, 0xc0, 0x0c, 0x00, 0x01, 0x00, 0x01, 0x00, 0x00, 0x00, 0x5e, 0x00, 0x04, 0x8e, 0xfa, 0xce,
-0xea, 0xc0, 0x0c, 0x00, 0x01, 0x00, 0x01, 0x00, 0x00, 0x00, 0x5e, 0x00, 0x04, 0x8e, 0xfa, 0xcf,
-0x6a, 0xc0, 0x0c, 0x00, 0x01, 0x00, 0x01, 0x00, 0x00, 0x00, 0x5e, 0x00, 0x04, 0xac, 0xd9, 0x19,
-0xaa
+            this.header = new Header ();
+            this.header.SetQuery ();
 
-//0x07, 0x9c, 0x81, 0x80, 0x00, 0x01, 0x00, 0x00, 0x00, 0x01, 0x00, 0x00, 0x0c, 0x73, 0x61, 0x66,
-//0x65, 0x62, 0x72, 0x6f, 0x77, 0x73, 0x69, 0x6e, 0x67, 0x0a, 0x67, 0x6f, 0x6f, 0x67, 0x6c, 0x65,
-//0x61, 0x70, 0x69, 0x73, 0x03, 0x63, 0x6f, 0x6d, 0x00, 0x00, 0x41, 0x00, 0x01, 0xc0, 0x19, 0x00,
-//0x06, 0x00, 0x01, 0x00, 0x00, 0x00, 0x3c, 0x00, 0x2d, 0x03, 0x6e, 0x73, 0x31, 0x06, 0x67, 0x6f,
-//0x6f, 0x67, 0x6c, 0x65, 0xc0, 0x24, 0x09, 0x64, 0x6e, 0x73, 0x2d, 0x61, 0x64, 0x6d, 0x69, 0x6e,
-//0xc0, 0x3d, 0x26, 0xe8, 0x6a, 0x79, 0x00, 0x00, 0x03, 0x84, 0x00, 0x00, 0x03, 0x84, 0x00, 0x00,
-//0x07, 0x08, 0x00, 0x00, 0x00, 0x3c
+            this.questions.Clear ();
+            this.answers.Clear();
+            this.authoritys.Clear ();
+            this.additionals.Clear ();
 
-//0x07, 0xcb, 0x81, 0x80, 0x00, 0x01, 0x00, 0x01, 0x00, 0x00, 0x00, 0x00, 0x08, 0x68, 0x65, 0x6c,
-//0x70, 0x66, 0x65, 0x65, 0x6c, 0x03, 0x63, 0x6f, 0x6d, 0x00, 0x00, 0x41, 0x00, 0x01, 0xc0, 0x0c,
-//0x00, 0x41, 0x00, 0x01, 0x00, 0x00, 0x00, 0xbd, 0x00, 0x16, 0x00, 0x01, 0x00, 0x00, 0x01, 0x00,
-//0x03, 0x02, 0x68, 0x32, 0x00, 0x04, 0x00, 0x08, 0x68, 0x10, 0xcf, 0xbf, 0x68, 0x12, 0xf0, 0xca
+            Question q = new Question ();
+            q.Setup (host, RRClass.IN, rrType);
+            
+            this.questions.Add (q);
 
-            };
-
-            DnsProtocol dns = new DnsProtocol();
-            DnsProtocol dns2 = new DnsProtocol();
-
-            dns.Parse (data);
-
-            byte[] data2 = dns.GetBytes();
-            dns2.Parse (data2);
+            return GetBytes ();
         }
+
     }
 }

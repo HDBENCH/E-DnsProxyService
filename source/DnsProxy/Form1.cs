@@ -48,7 +48,19 @@ namespace DnsProxyAdmin
         private bool bProxyEnable = false;
         private bool bIsClosing = false;
         private bool bViewScroll = true;
+        private string basePath;
+        private string configPath;
+        private VIEW_MODE viewMode = VIEW_MODE.All;
 
+        enum VIEW_MODE
+        {
+            All,
+            Accept,
+            Reject,
+            Ignore,
+            Answer,
+            Set,
+        }
 
         public Form1 ()
         {
@@ -68,7 +80,7 @@ namespace DnsProxyAdmin
             this.listViewImageList.Images.Add (Properties.Resources.Ignore);
             this.listViewImageList.Images.Add (Properties.Resources.LightIgnore);
             this.treeView1.ImageList = this.listViewImageList;
-
+            this.treeView1.Sorted = true;
 
             //ListView
             this.columnTime.Text = "Time";
@@ -98,46 +110,55 @@ namespace DnsProxyAdmin
             this.timer1Sec.Start ();
 
 
-            //listViewItemList
-            contextMenu_ViewAll(null, null);
-
             //Menu
             ProxyEnable(false);
             MenuEnable(false);
 
-            ERegistry regkey = new ERegistry(Registry.CurrentUser, Common.regkey_name);
+            this.basePath = System.AppDomain.CurrentDomain.BaseDirectory;
+            if(this.basePath.Substring(this.basePath.Length - 1, 1) != "\\")
+            {
+                this.basePath += "\\";
+            }
+            this.configPath = this.basePath + "config.ini";
 
-            this.Bounds                 = (Rectangle)regkey.GetValue ("FormBounds"  , this.Bounds);
+            Config config = new Config();
+            config.Load(this.configPath);
+
+            this.Bounds                 = (Rectangle)config.GetValue (Config.Name.admin_FormBounds  , this.Bounds);
             this.splitContainer1.SplitterDistance
-                                        = (int)regkey.GetValue ("SplitterDistance"  , this.splitContainer1.SplitterDistance);
-            this.columnTime.Width       = (int)regkey.GetValue ("columnTime"        , this.columnTime.Width);
-            this.columnType.Width       = (int)regkey.GetValue ("columnType"        , this.columnType.Width);
-            this.columnIp.Width         = (int)regkey.GetValue ("columnIp"          , this.columnIp.Width);
-            this.columnHost.Width       = (int)regkey.GetValue ("columnHost"        , this.columnHost.Width);
-            this.columnInfo.Width       = (int)regkey.GetValue ("columnInfo"        , this.columnInfo.Width);
-            this.columnComment.Width    = (int)regkey.GetValue ("columnComment"     , this.columnComment.Width);
-            this.bViewScroll            = (bool)regkey.GetValue ("ViewScroll", true);
-            regkey.Close ();
+                                        = (int)config.GetValue (Config.Name.admin_SplitterDistance  , this.splitContainer1.SplitterDistance);
+            this.columnTime.Width       = (int)config.GetValue (Config.Name.admin_columnTime        , this.columnTime.Width);
+            this.columnType.Width       = (int)config.GetValue (Config.Name.admin_columnType        , this.columnType.Width);
+            this.columnIp.Width         = (int)config.GetValue (Config.Name.admin_columnIp          , this.columnIp.Width);
+            this.columnHost.Width       = (int)config.GetValue (Config.Name.admin_columnHost        , this.columnHost.Width);
+            this.columnInfo.Width       = (int)config.GetValue (Config.Name.admin_columnInfo        , this.columnInfo.Width);
+            this.columnComment.Width    = (int)config.GetValue (Config.Name.admin_columnComment     , this.columnComment.Width);
+            this.bViewScroll            = (bool)config.GetValue(Config.Name.admin_ViewScroll        , this.bViewScroll);
+            this.viewMode               = (VIEW_MODE)config.GetValue(Config.Name.admin_ViewMode     , this.viewMode);
+            config.Save(this.configPath);
 
             ViewScroll(this.bViewScroll);
+            contextMenu_View(this.viewMode);
+
             this.dnsProxyClient.Start (PipeConnect, PipeReceive, this);
         }
 
         private void Form1_FormClosed (object sender, FormClosedEventArgs e)
         {
-            ERegistry regkey = new ERegistry(Registry.CurrentUser, Common.regkey_name);
+            Config config = new Config();
+            config.Load(this.configPath);
 
-            regkey.SetValue("FormBounds"        , (this.WindowState == FormWindowState.Normal) ? this.Bounds : this.RestoreBounds);
-            regkey.SetValue("SplitterDistance"  , this.splitContainer1.SplitterDistance);
-
-            regkey.SetValue ("columnTime"       , this.columnTime.Width);
-            regkey.SetValue ("columnType"       , this.columnType.Width);
-            regkey.SetValue ("columnIp"         , this.columnIp.Width);
-            regkey.SetValue ("columnHost"       , this.columnHost.Width);
-            regkey.SetValue ("columnInfo"       , this.columnInfo.Width);
-            regkey.SetValue ("columnComment"    , this.columnComment.Width);
-            regkey.SetValue ("ViewScroll"       , this.bViewScroll);
-            regkey.Close ();
+            config.SetValue (Config.Name.admin_FormBounds       , (this.WindowState == FormWindowState.Normal) ? this.Bounds : this.RestoreBounds);
+            config.SetValue (Config.Name.admin_SplitterDistance , this.splitContainer1.SplitterDistance);
+            config.SetValue (Config.Name.admin_columnTime       , this.columnTime.Width);
+            config.SetValue (Config.Name.admin_columnType       , this.columnType.Width);
+            config.SetValue (Config.Name.admin_columnIp         , this.columnIp.Width);
+            config.SetValue (Config.Name.admin_columnHost       , this.columnHost.Width);
+            config.SetValue (Config.Name.admin_columnInfo       , this.columnInfo.Width);
+            config.SetValue (Config.Name.admin_columnComment    , this.columnComment.Width);
+            config.SetValue (Config.Name.admin_ViewScroll       , this.bViewScroll);
+            config.SetValue (Config.Name.admin_ViewMode         , this.viewMode);
+            config.Save(this.configPath);
 
             this.bIsClosing = true;
             this.dnsProxyClient.Stop();
@@ -484,7 +505,7 @@ namespace DnsProxyAdmin
             DataBase db = dnsProxyClient.GetDataBase ();
             List<KeyValuePair<string, DataBase>> list = new List<KeyValuePair<string, DataBase>>();
             list = db.GetDataBase().ToList ();
-            list.Sort (CompareDatabase);
+            //list.Sort (CompareDatabase);
 
             foreach (var v in list)
             {
@@ -499,8 +520,7 @@ namespace DnsProxyAdmin
         {
             string[] hosts;
             DataBase db = this.dnsProxyClient.GetDataBase();
-            TreeNode node = null;
-            int index;
+            TreeNode node = this.treeView1.TopNode;
 
             do
             {
@@ -515,23 +535,10 @@ namespace DnsProxyAdmin
                 for (int i = 0; i < hosts.Length; i++)
                 {
                     string h = hosts[hosts.Length - i - 1];
-                    host = string.Format("{0}{1}{2}", host, string.IsNullOrEmpty(host)?"":".", h);
+                    host = string.Format("{0}{1}{2}", h, string.IsNullOrEmpty(host)?"":".", host);
 
                     if (!this.hostNameToNodeDic.TryGetValue (host, out TreeNode n))
                     {
-                        index = 0;
-
-                        for (int j = 0; j < node.Nodes.Count; j++)
-                        {
-                            DBG.MSG("j={0}, {1}, {2}, {3}\n", j, node.Nodes[j].Text,  h, node.Nodes[j].Text.CompareTo (h));
-
-                            if (node.Nodes[j].Text.CompareTo (h) > 0)
-                            {
-                                index = j;
-                                break;
-                            }
-                        }
-
                         db = this.dnsProxyClient.FindDataBase (host);
                         if (db == null)
                         {
@@ -548,7 +555,7 @@ namespace DnsProxyAdmin
                         {
                             n.ToolTipText = string.Format ("{0} : {1}", db.GetDatetime (), db.GetComment ());
                         }
-                        node.Nodes.Insert(index, n);
+                        node.Nodes.Add(n);
 
                         this.hostNameToNodeDic.TryAdd(db.GetFullName(), n);
                         this.nodeToHostNameDic.TryAdd(n, db.GetFullName());
@@ -610,6 +617,9 @@ namespace DnsProxyAdmin
         {
             ListViewItem item;
             HistoryData historyData;
+            string host = "";
+            string[] hosts;
+            TreeNode node = null;
 
             do
             {
@@ -625,10 +635,19 @@ namespace DnsProxyAdmin
                     break;
                 }
 
-                TreeNode node = HostNameToNode (historyData.host);
-                if (node == null)
+                hosts = historyData.host.Split('.');
+                for (int i = 0; i < hosts.Length; i++)
                 {
-                    break;
+                    string h = hosts[hosts.Length - i - 1];
+                    host = string.Format ("{0}{1}{2}", h, string.IsNullOrEmpty (host) ? "" : ".", host);
+                    
+                    TreeNode n = HostNameToNode (host);
+                    if (n == null)
+                    {
+                        break;
+                    }
+
+                    node = n;
                 }
 
                 this.treeView1.SelectedNode = node;
@@ -757,90 +776,101 @@ namespace DnsProxyAdmin
                 this.listView1.VirtualListSize = 0;
             }
         }
-        void contextMenu_ViewAll(object sender, EventArgs e)
-        {
-            this.listViewItemList = this.listViewItemAllList;
-            UpdateListVew ();
 
-            this.allToolStripMenuItem.CheckState = CheckState.Checked;
+        void contextMenu_View(VIEW_MODE mode)
+        {
+            this.viewMode = mode;
+
+            this.allToolStripMenuItem.CheckState = CheckState.Unchecked;
             this.acceptToolStripMenuItem.CheckState = CheckState.Unchecked;
             this.rejectToolStripMenuItem.CheckState = CheckState.Unchecked;
             this.ignoreToolStripMenuItem.CheckState = CheckState.Unchecked;
             this.answerToolStripMenuItem.CheckState = CheckState.Unchecked;
             this.setToolStripMenuItem.CheckState = CheckState.Unchecked;
 
-            this.toolStripStatusView.Text = "All View";
+            switch (mode)
+            {
+            case VIEW_MODE.All:
+                {
+                    this.allToolStripMenuItem.CheckState = CheckState.Checked;
+                    this.listViewItemList = this.listViewItemAllList;
+                    this.toolStripStatusView.Text = "All View";
+                }
+                break;
+
+            case VIEW_MODE.Accept:
+                {
+                    this.acceptToolStripMenuItem.CheckState = CheckState.Checked;
+                    this.listViewItemList = this.listViewItemAcceptList;
+                    this.toolStripStatusView.Text = "Accept View";
+                }
+                break;
+
+            case VIEW_MODE.Reject:
+                {
+                    this.rejectToolStripMenuItem.CheckState = CheckState.Checked;
+                    this.listViewItemList = this.listViewItemRejectList;
+                    this.toolStripStatusView.Text = "Reject View";
+                }
+                break;
+
+            case VIEW_MODE.Ignore:
+                {
+                    this.ignoreToolStripMenuItem.CheckState = CheckState.Checked;
+                    this.listViewItemList = this.listViewItemIgnoreList;
+                    this.toolStripStatusView.Text = "Ignore View";
+                }
+                break;
+
+            case VIEW_MODE.Answer:
+                {
+                    this.answerToolStripMenuItem.CheckState = CheckState.Checked;
+                    this.listViewItemList = this.listViewItemIgnoreList;
+                    this.toolStripStatusView.Text = "Answer View";
+                }
+                break;
+
+            case VIEW_MODE.Set:
+                {
+                    this.setToolStripMenuItem.CheckState = CheckState.Checked;
+                    this.listViewItemList = this.listViewItemSetList;
+                    this.toolStripStatusView.Text = "Set View";
+                }
+                break;
+
+            default:
+                {
+                    Debug.Assert (false);
+                }
+                break;
+            }
+            UpdateListVew ();
+        }
+
+        void contextMenu_ViewAll(object sender, EventArgs e)
+        {
+            contextMenu_View (VIEW_MODE.All);
         }
 
         void contextMenu_ViewAccept(object sender, EventArgs e)
         {
-            this.listViewItemList = this.listViewItemAcceptList;
-            UpdateListVew ();
-
-            this.allToolStripMenuItem.CheckState = CheckState.Unchecked;
-            this.acceptToolStripMenuItem.CheckState = CheckState.Checked;
-            this.rejectToolStripMenuItem.CheckState = CheckState.Unchecked;
-            this.ignoreToolStripMenuItem.CheckState = CheckState.Unchecked;
-            this.answerToolStripMenuItem.CheckState = CheckState.Unchecked;
-            this.setToolStripMenuItem.CheckState = CheckState.Unchecked;
-
-            this.toolStripStatusView.Text = "Accept View";
+            contextMenu_View (VIEW_MODE.Accept);
         }
         void contextMenu_ViewReject(object sender, EventArgs e)
         {
-            this.listViewItemList = this.listViewItemRejectList;
-            UpdateListVew ();
-
-            this.allToolStripMenuItem.CheckState = CheckState.Unchecked;
-            this.acceptToolStripMenuItem.CheckState = CheckState.Unchecked;
-            this.rejectToolStripMenuItem.CheckState = CheckState.Checked;
-            this.ignoreToolStripMenuItem.CheckState = CheckState.Unchecked;
-            this.answerToolStripMenuItem.CheckState = CheckState.Unchecked;
-            this.setToolStripMenuItem.CheckState = CheckState.Unchecked;
-
-            this.toolStripStatusView.Text = "Reject View";
+            contextMenu_View (VIEW_MODE.Reject);
         }
         void contextMenu_ViewIgnore(object sender, EventArgs e)
         {
-            this.listViewItemList = this.listViewItemIgnoreList;
-            UpdateListVew ();
-
-            this.allToolStripMenuItem.CheckState = CheckState.Unchecked;
-            this.acceptToolStripMenuItem.CheckState = CheckState.Unchecked;
-            this.rejectToolStripMenuItem.CheckState = CheckState.Unchecked;
-            this.ignoreToolStripMenuItem.CheckState = CheckState.Checked;
-            this.answerToolStripMenuItem.CheckState = CheckState.Unchecked;
-            this.setToolStripMenuItem.CheckState = CheckState.Unchecked;
-
-            this.toolStripStatusView.Text = "Ignore View";
+            contextMenu_View (VIEW_MODE.Ignore);
         }
         void contextMenu_ViewAnswer(object sender, EventArgs e)
         {
-            this.listViewItemList = this.listViewItemAnswerList;
-            UpdateListVew ();
-
-            this.allToolStripMenuItem.CheckState = CheckState.Unchecked;
-            this.acceptToolStripMenuItem.CheckState = CheckState.Unchecked;
-            this.rejectToolStripMenuItem.CheckState = CheckState.Unchecked;
-            this.ignoreToolStripMenuItem.CheckState = CheckState.Unchecked;
-            this.answerToolStripMenuItem.CheckState = CheckState.Checked;
-            this.setToolStripMenuItem.CheckState = CheckState.Unchecked;
-
-            this.toolStripStatusView.Text = "Answer View";
+            contextMenu_View (VIEW_MODE.Answer);
         }
         void contextMenu_ViewSet(object sender, EventArgs e)
         {
-            this.listViewItemList = this.listViewItemSetList;
-            UpdateListVew ();
-
-            this.allToolStripMenuItem.CheckState = CheckState.Unchecked;
-            this.acceptToolStripMenuItem.CheckState = CheckState.Unchecked;
-            this.rejectToolStripMenuItem.CheckState = CheckState.Unchecked;
-            this.ignoreToolStripMenuItem.CheckState = CheckState.Unchecked;
-            this.answerToolStripMenuItem.CheckState = CheckState.Unchecked;
-            this.setToolStripMenuItem.CheckState = CheckState.Checked;
-
-            this.toolStripStatusView.Text = "Set View";
+            contextMenu_View (VIEW_MODE.Set);
         }
 
         void contextMenu_ViewScroll (object sender, EventArgs e)
