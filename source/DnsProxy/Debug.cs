@@ -3,6 +3,7 @@ using System.Collections.Generic;
 using System.Text;
 using System.Diagnostics;
 using System.Linq;
+using System.Threading.Tasks;
 
 namespace DnsProxyLibrary
 {
@@ -11,7 +12,11 @@ namespace DnsProxyLibrary
         public static void MSG (string format, params object[] args)
         {
 #if DEBUG
+            _=Task.Run(() =>{
+            
             Debug.Write (DateTime.Now.ToString ("HH:mm:ss:fff ## ") + string.Format (format, args));
+            
+            });
 #endif
         }
 
@@ -19,6 +24,8 @@ namespace DnsProxyLibrary
         public static void DUMP (byte[] sender, int len = 0, int offset = 0, int width = 16)
         {
 #if DEBUG
+            _=Task.Run(() =>{
+
             string time = DateTime.Now.ToString();
             StringBuilder strDump = new StringBuilder ();
             StringBuilder strAscii= new StringBuilder ();
@@ -59,6 +66,8 @@ namespace DnsProxyLibrary
 
             string s = strDump.ToString ();
             Debug.Write (strDump.ToString ());
+
+            });
 #endif
         }
     }

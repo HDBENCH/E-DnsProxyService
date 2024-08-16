@@ -121,8 +121,8 @@ namespace DnsProxyLibrary
                 this.authoritys = DnsProtocol.ToUInt16 (bytes, 8);
                 this.additionals = DnsProtocol.ToUInt16 (bytes, 10);
 
-                DBG.MSG ("DnsProtocol.Question.Parse - TransactionID = 0x{0:X2}\n", this.TransactionID);
-                DBG.MSG ("DnsProtocol.Question.Parse - Flags         = 0x{0:X2}\n", this.Flags);
+                DBG.MSG ("DnsProtocol.Question.Parse - TransactionID = 0x{0:X4}\n", this.TransactionID);
+                DBG.MSG ("DnsProtocol.Question.Parse - Flags         = 0x{0:X4}\n", this.Flags);
                 DBG.MSG ("DnsProtocol.Question.Parse - Questions     = {0}\n", this.questions);
                 DBG.MSG ("DnsProtocol.Question.Parse - Answers       = {0}\n", this.answers);
                 DBG.MSG ("DnsProtocol.Question.Parse - Authoritys    = {0}\n", this.authoritys);
@@ -212,6 +212,12 @@ namespace DnsProxyLibrary
                 DnsProtocol.ToStream ((ushort)this.Type, stream);
                 DnsProtocol.ToStream ((ushort)this.Class, stream);
             }
+
+            public override string ToString ()
+            {
+                return string.Format ("{0},{1},{2}", this.Name, this.Type, this.Class);
+            }
+
 
             public void Setup (string host, RRClass rrClass = RRClass.IN, RRType type = RRType.A)
             {

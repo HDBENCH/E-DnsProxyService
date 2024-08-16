@@ -1143,13 +1143,9 @@ namespace DnsProxyAdmin
 
                 var index = this.listView1.SelectedIndices;
 
-                if (index == null)
+                if ((index == null) || (index.Count != 1))
                 {
-                    break;
-                }
-
-                if (index.Count != 1)
-                {
+                    ShowContextMenu (null, this.listView1, e.X, e.Y);
                     break;
                 }
 

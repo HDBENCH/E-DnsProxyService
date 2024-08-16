@@ -38,14 +38,14 @@ namespace DnsProxyLibrary
         UdpClient udpClient;
         Thread serverRecvThread;
         Thread clientRecvThread;
-        Thread parseThread;
         Thread oneSecThread;
 
         IPEndPoint serverEP;
         IPEndPoint clientEP;
         IPEndPoint remoteEP;
 
-        ConcurrentDictionary<ushort, PacketData> reqDic = new ConcurrentDictionary<ushort, PacketData>();
+        Dictionary<string,DateTime> recvMap = new Dictionary<string, DateTime>();
+        Dictionary<ushort, PacketData> transactionMap = new Dictionary<ushort, PacketData>();
         AutoResetEvent eventRecv = new AutoResetEvent(false);
         List<PacketData> recvPacketList = new List<PacketData>();
         ushort TransactionID = 1;
@@ -69,6 +69,7 @@ namespace DnsProxyLibrary
         private object _funcParam;
         private bool bProxyEnable = true;
         private bool bHostoryEnable = false;
+        private Statistics  statistics;
 
 
         public void Start(string base_path, ConnectFunc connectFunc, ReceiveFunc recvFunc, StopFunc stopFunc, object funcParam)
@@ -92,31 +93,32 @@ namespace DnsProxyLibrary
 
                 try
                 {
+                    this.statistics = new Statistics();
+
                     this.namedPipe.StartServer(Common.pipeGuid, PipeConnect, PipeReceiveAsync, this);
 
                     this.serverEP = new IPEndPoint(IPAddress.Any, 53);
+                    this.udpServer = new UdpClient(this.serverEP);
+
                     this.clientEP = new IPEndPoint(IPAddress.Any, 0);
 
-                    this.serverRecvThread = new Thread(new ParameterizedThreadStart(ServerRecvThread));
-                    this.serverRecvThread.Name = "ServerRecvThread";
-                    this.serverRecvThread.Start();
+                    this.udpClient = new UdpClient(this.clientEP);
 
-                    this.clientRecvThread = new Thread(new ParameterizedThreadStart(ClientRecvThread));
+                    this.clientRecvThread = new Thread(new ParameterizedThreadStart(RecvThread));
                     this.clientRecvThread.Name = "clientRecvThread";
-                    this.clientRecvThread.Start();
+                    this.clientRecvThread.Start(this.udpClient);
+                    
+                    this.serverRecvThread = new Thread(new ParameterizedThreadStart(RecvThread));
+                    this.serverRecvThread.Name = "ServerRecvThread";
+                    this.serverRecvThread.Start(this.udpServer);
 
-                    this.parseThread = new Thread(new ParameterizedThreadStart(ParseThread));
-                    this.parseThread.Name = "ParseThread";
-                    this.parseThread.Start();
-
-                    this.oneSecThread = new Thread(new ParameterizedThreadStart(OneSecThread));
+                    this.oneSecThread = new Thread(new ParameterizedThreadStart(TimerThread));
                     this.oneSecThread.Name = "OneSecThread";
                     this.oneSecThread.Start();
                 }
                 catch(Exception e)
                 {
                     DBG.MSG("DnsProxyServer.Start - Exception({0})\n", e.Message);
-                    //Debug.Assert(false);
                     if (this._stopFunc != null)
                     {
                         this._stopFunc(this._funcParam);
@@ -136,7 +138,6 @@ namespace DnsProxyLibrary
 
             this.serverRecvThread?.Join();
             this.clientRecvThread?.Join();
-            this.parseThread?.Join();
             this.oneSecThread?.Join();
 
 
@@ -226,277 +227,255 @@ namespace DnsProxyLibrary
         }
 
 
-        private async void ServerRecvThread(object obj)
+        private void RecvThread (object obj)
         {
-            IPEndPoint remoteEndPoint = new IPEndPoint(0, 0);
-            byte[] bytes;
-
-            DBG.MSG("DnsProxyServer.ServerRecvThread - START, 0x{0:X}, {1}\n", this.serverRecvThread.ManagedThreadId, this.serverEP.ToString());
+            UdpClient udp = (UdpClient)obj;
 
 
             for(; !this.cts.IsCancellationRequested;)
             {
                 try
                 {
-                    if(this.udpServer == null)
-                    {
-                        this.udpServer = new UdpClient(this.serverEP);
-                    }
-                }
-                catch(Exception e)
-                {
-                    DBG.MSG("DnsProxyServer.ServerRecvThread - Exception, {0}, {1}\n", e.HResult, e.Message);
-
-                    if((uint)e.HResult == 0x80004005)
-                    {
-                        break;
-                    }
-                }
-
-                if(this.udpServer == null)
-                {
-                    Thread.Sleep(1000);
-                    continue;
-                }
-
-
-                try
-                {
-                    //データを受信する
-                    UdpReceiveResult receivedResults = await this.udpServer.ReceiveAsync();
-                    remoteEndPoint = receivedResults.RemoteEndPoint;
-                    bytes = receivedResults.Buffer;
+#if false
+                    UdpReceiveResult receiveResult = await udp.ReceiveAsync ();
+                    IPEndPoint ep = receiveResult.RemoteEndPoint;
+                    byte[] bytes = receiveResult.Buffer;
+#else
+                    IPEndPoint ep = new IPEndPoint(IPAddress.Any, 0);
+                    byte[] bytes = udp.Receive(ref ep);
+#endif
 
                     PacketData data = new PacketData();
 
                     data.Time = DateTime.Now;
-                    data.senderEndPoint = new IPEndPoint(remoteEndPoint.Address, remoteEndPoint.Port);
+                    data.senderEndPoint = new IPEndPoint (ep.Address, ep.Port);
                     data.bytes = new byte[bytes.Length];
                     bytes.CopyTo(data.bytes, 0);
 
-                    lock(this.recvPacketList)
-                    {
-                        this.recvPacketList.Add(data);
-                        this.eventRecv.Set();
-                    }
+                    ParseAndRelay (ref data);
                 }
                 catch(System.Net.Sockets.SocketException e)
                 {
-                    DBG.MSG("DnsProxyServer.ServerRecvThread - SocketException, HResult={0:X8}, {1}\n", e.HResult, e.ToString());
+                    DBG.MSG("DnsProxyServer.RecvThread - SocketException, HResult={0:X8}, {1}\n", e.HResult, e.ToString());
                 }
                 catch(ObjectDisposedException e)
                 {
-                    //すでに閉じている時は終了
-                    DBG.MSG("DnsProxyServer.ServerRecvThread - ObjectDisposedException, {0}\n", e.Message);
-                    break;
+                    DBG.MSG("DnsProxyServer.RecvThread - ObjectDisposedException, {0}\n", e.Message);
+                }
+                catch(AggregateException e)
+                {
+                    foreach (var v in e.InnerExceptions)
+                    {
+                        DBG.MSG("DnsProxyServer.RecvThread - AggregateException, {0}, {1}\n", v.HResult, v.Message);
+                    }
+
                 }
                 catch(Exception e)
                 {
-                    DBG.MSG("DnsProxyServer.ServerRecvThread - Exception, {0}, {1}\n", e.HResult, e.Message);
+                    DBG.MSG("DnsProxyServer.RecvThread - Exception, {0}, {1}\n", e.HResult, e.Message);
                     Debug.Assert(false);
                 }
             }
 
-            DBG.MSG("DnsProxyServer.ServerRecvThread - END, 0x{0:X}, {1}\n", this.serverRecvThread.ManagedThreadId, this.serverEP.ToString());
         }
-        private async void ClientRecvThread(object obj)
-        {
-            IPEndPoint remoteEndPoint = new IPEndPoint(0, 0);
-            byte[] bytes;
 
-            DBG.MSG("DnsProxyServer.ClientRecvThread - START, 0x{0:X}, {1}\n", this.clientRecvThread.ManagedThreadId, this.clientEP.ToString());
+        [DllImport("kernel32.dll") ]
+        public static extern UInt64 GetTickCount64();
+        
+        private void TimerThread (object obj)
+        {
+            UInt64 tickCountNow = 0;
+            UInt64 tickCount = 0;
+            UInt64 interval = 1000;
+            int sec = 0;
+
+            DBG.MSG("DnsProxyServer.TimerThread - START\n");
+
+            tickCount = GetTickCount64() + interval;
 
 
             for(; !this.cts.IsCancellationRequested;)
             {
-                try
-                {
-                    this.udpClient = new UdpClient(this.clientEP);
-                }
-                catch(Exception e)
-                {
-                    DBG.MSG("DnsProxyServer.ClientRecvThread - Exception, {0}, {1}\n", e.HResult, e.Message);
-                }
+                tickCountNow = GetTickCount64();
 
-                if(this.udpClient == null)
+                if (tickCountNow >= tickCount)
                 {
-                    Thread.Sleep(1000);
-                    continue;
+                    OnTimer(sec++);
+
+                    if (tickCountNow >= (tickCount + (interval * 2)))
+                {
+                        tickCount += (tickCountNow - tickCount) / interval * interval;
+                        sec = 0;
                 }
 
-                try
-                {
-                    //データを受信する
-                    UdpReceiveResult receivedResults = await this.udpClient.ReceiveAsync();
-                    remoteEndPoint = receivedResults.RemoteEndPoint;
-                    bytes = receivedResults.Buffer;
-
-                    //
-                    PacketData data = new PacketData();
-
-                    data.Time = DateTime.Now;
-                    data.senderEndPoint = new IPEndPoint(remoteEndPoint.Address, remoteEndPoint.Port);
-                    data.bytes = new byte[bytes.Length];
-                    bytes.CopyTo(data.bytes, 0);
-
-                    lock(this.recvPacketList)
+                    else
                     {
-                        this.recvPacketList.Add(data);
-                        this.eventRecv.Set();
+                        tickCount += interval;
                     }
                 }
-                catch(System.Net.Sockets.SocketException e)
+                else
                 {
-                    DBG.MSG("DnsProxyServer.ClientRecvThread - SocketException, HResult={0:X8}, {1}\n", e.HResult, e.ToString());
+                    int diff = (int)(tickCount - tickCountNow);
+
+                    if (diff > 100)
+                {
+                        Thread.Sleep (100);
                 }
-                catch(ObjectDisposedException e)
+                    else 
                 {
-                    //すでに閉じている時は終了
-                    DBG.MSG("DnsProxyServer.ClientRecvThread - ObjectDisposedException, {0}\n", e.Message);
-                    break;
-                }
-                catch(Exception e)
-                {
-                    DBG.MSG("DnsProxyServer.ClientRecvThread - Exception, {0}, {1}\n", e.HResult, e.Message);
-                    Debug.Assert(false);
+                        Thread.Sleep (10);
                 }
             }
 
-            DBG.MSG("DnsProxyServer.ClientRecvThread - END, 0x{0:X}\n", this.clientRecvThread.ManagedThreadId);
         }
 
 
-        private void OneSecThread(object obj)
-        {
-            List<PacketData> recvPacketList = new List<PacketData>();
-
-            DBG.MSG("DnsProxyServer.OneSecThread - START, 0x{0:X}, {1}\n", this.oneSecThread.ManagedThreadId, this.serverEP.ToString());
-            for(; !this.cts.IsCancellationRequested;)
-            {
-                for(int i = 0; i < 10; i++)
-                {
-                    if(this.cts.IsCancellationRequested)
-                    {
-                        break;
-                    }
-
-                    Thread.Sleep(100);
+            DBG.MSG("DnsProxyServer.TimerThread - END\n");
                 }
+
+        private void OnTimer (int sec)
+        {
+            //DBG.MSG("DnsProxyServer.OnTimer - START({0})\n", sec);
+            DateTime timeNow = DateTime.Now;
 
                 Save();
 
                 //timeout
-                lock(this.reqDic)
+            lock(this.transactionMap)
                 {
-                    DateTime timeNow = DateTime.Now;
-                    TimeSpan timeSpan = new TimeSpan(0, 3, 0);
-                    List<ushort> list = new List<ushort>();
+                TimeSpan timeSpan = new TimeSpan(0, 0, 10);
+                List<KeyValuePair<ushort, PacketData>> list = new List<KeyValuePair<ushort, PacketData>>();
 
-                    foreach(var v in this.reqDic)
+                foreach(var v in this.transactionMap)
                     {
                         if((timeNow - v.Value.Time) > timeSpan)
                         {
-                            list.Add(v.Key);
+                        list.Add(v);
                         }
                     }
 
                     foreach(var v in list)
                     {
-                        if(this.reqDic.TryRemove(v, out PacketData value))
+                    if(this.transactionMap.Remove(v.Key))
                         {
-                            DBG.MSG("DnsProxyServer.OneSecThread - Timeout, TransactionID=0x{0:X2}, TimeNow={1}, Time={2}\n", value.TransactionID, timeNow, value.Time);
-                        }
+                        DBG.MSG("DnsProxyServer.OnTimer - transactionMap.Timeout, Time={0}, TransactionID=0x{1:X2}\n", v.Value.Time, v.Value.TransactionID);
                     }
                 }
             }
 
-            DBG.MSG("DnsProxyServer.OneSecThread - END, 0x{0:X}, {1}\n", this.oneSecThread.ManagedThreadId, this.serverEP.ToString());
+            lock (this.recvMap)
+            {
+                List<KeyValuePair<string, DateTime>> list = new List<KeyValuePair<string, DateTime>>();
+                TimeSpan timeSpan = new TimeSpan(0, 0, 5);
 
+                foreach (var v in this.recvMap)
+                {
+                    if ((timeNow - v.Value) > timeSpan)
+                    {
+                        list.Add (v);
+                    }
+                    }
+
+                foreach (var v in list)
+                    {
+                    if (this.recvMap.Remove (v.Key))
+                        {
+                        DBG.MSG ("DnsProxyServer.OnTimer - recvMap.Timeout, Time={0}, key={1}\n", v.Value, v.Key);
+                        }
+                    }
+
+                        }
+
+            //DBG.MSG("DnsProxyServer.OnTimer - END\n");
         }
 
 
-        private async void ParseThread(object obj)
+
+        private void ParseAndRelay(ref PacketData data)
         {
-            List<PacketData> recvPacketList = new List<PacketData>();
+            DateTime timeNow = DateTime.Now;
 
-            DBG.MSG("DnsProxyServer.ParseThread - START, 0x{0:X}, {1}\n", this.parseThread.ManagedThreadId, this.serverEP.ToString());
-
-            for(; !this.cts.IsCancellationRequested;)
-            {
-                try
-                {
-                    if(!this.eventRecv.WaitOne(100))
-                    {
-                        continue;
-                    }
-
-                    lock(this.recvPacketList)
-                    {
-                        foreach(var v in this.recvPacketList)
-                        {
-                            recvPacketList.Add(v);
-                        }
-                        this.recvPacketList.Clear();
-                    }
-
-                    foreach(var data in recvPacketList)
-                    {
-                        if(this.cts.IsCancellationRequested)
-                        {
-                            break;
-                        }
-
-                        DBG.MSG("DnsProxyServer.ParseThread - RECV, {0}\n", data.senderEndPoint.ToString());
+            DBG.MSG ("\n");
+            DBG.MSG ("DnsProxyServer.ParseAndRelay - START, {0}\n", data.senderEndPoint.ToString ());
                         //DBG.DUMP(data.bytes, data.bytes.Length);
 
+            do
+            {
 
                         DnsProtocol dns = new DnsProtocol();
                         dns.Parse(data.bytes);
 
+                string key = string.Format("{0:X4},{1}", dns.header.TransactionID, data.senderEndPoint);
+
+                lock (this.recvMap)
+                {
+                    if (this.recvMap.ContainsKey (key))
+                    {
+                        DBG.MSG ("DnsProxyServer.ParseAndRelay - duplicate Request, {0}\n", key);
+                        break;
+                    }
+
+                    this.recvMap.Add (key, timeNow);
+                }
+
                         if(dns.header.IsQuery())
                         {
-                            DBG.MSG("DnsProxyServer.ParseThread - Query {0}\n", data.senderEndPoint);
+                    ushort tID;
+
+                    this.statistics.query++;
+
+                    DBG.MSG ("DnsProxyServer.ParseAndRelay - Query {0}\n", data.senderEndPoint);
                             if(!IsAcceptAsync(dns, data.senderEndPoint.ToString()))
                             {
+                        this.statistics.reject++;
+
                                 data.bytes[0x02] |= 0x80;
                                 data.bytes[0x03] |= 0x03;
-                                await this.udpServer.SendAsync(data.bytes, data.bytes.Length, data.senderEndPoint);
+
+                        DBG.MSG ("DnsProxyServer.ParseAndRelay - udpServer.SendAsync(not found) {0}\n", data.senderEndPoint);
+                        //_ = this.udpServer.SendAsync (data.bytes, data.bytes.Length, data.senderEndPoint);
+                        this.udpServer.Send (data.bytes, data.bytes.Length, data.senderEndPoint);
 
                                 break;
                             }
 
-                            lock(this.reqDic)
+                    lock (this.transactionMap)
                             {
-                                if(this.reqDic.ContainsKey(this.TransactionID))
+                        while (this.transactionMap.ContainsKey (this.TransactionID))
                                 {
                                     Debug.Assert(false);
-                                }
-
-                                data.Time = DateTime.Now;
-                                data.TransactionID = this.TransactionID;
-                                this.reqDic.TryAdd(this.TransactionID, data);
-                            }
-
-                            Buffer.BlockCopy(data.bytes, 0, data.originalTransactionID, 0, 2);
-
-                            data.bytes[0] = (byte)((this.TransactionID & 0xFF00) >> 8);//TransactionID
-                            data.bytes[1] = (byte)((this.TransactionID & 0x00FF) >> 0);//TransactionID
-
-                            DBG.MSG("DnsProxyServer.ParseThread - Query TransactionID=0x{0:X2}\n", this.TransactionID);
                             this.TransactionID++;
 
-                            if(this.udpClient != null)
-                            {
-                                await this.udpClient.SendAsync(data.bytes, data.bytes.Length, this.remoteEP);
                             }
-                            else
+
+                        if (this.TransactionID == 0)
                             {
-                                await this.udpServer.SendAsync(data.bytes, data.bytes.Length, this.remoteEP);
+                            this.TransactionID = 1;
+                        }
+                        
+                        tID = this.TransactionID++;
+
+                        data.Time = timeNow;
+                        data.TransactionID = tID;
+                        this.transactionMap.Add (tID, data);
                             }
+
+                    Buffer.BlockCopy (data.bytes, 0, data.originalTransactionID, 0, 2);
+
+                    data.bytes[0] = (byte)((tID & 0xFF00) >> 8);//TransactionID
+                    data.bytes[1] = (byte)((tID & 0x00FF) >> 0);//TransactionID
+
+                    DBG.MSG ("DnsProxyServer.ParseAndRelay - Query TransactionID=0x{0:X2}\n", tID);
+
+                    DBG.MSG ("DnsProxyServer.ParseAndRelay - udpClient.SendAsync {0}\n", this.remoteEP);
+                    //_ = this.udpClient.SendAsync (data.bytes, data.bytes.Length, this.remoteEP);
+                    this.udpClient.Send (data.bytes, data.bytes.Length, this.remoteEP);
+                    this.statistics.accept++;
                         }
                         else
                         {
-                            DBG.MSG("DnsProxyServer.ParseThread - Response\n");
+                    DBG.MSG ("DnsProxyServer.ParseAndRelay - Response\n");
+                    this.statistics.answer++;
 
                             for(int i = 0; i < dns.answers.Count; i++)
                             {
@@ -520,32 +499,30 @@ namespace DnsProxyLibrary
                                 HistoryAdd(FLAGS.Answer, data.senderEndPoint.Address.ToString(), v.Name, string.Format("{0}: {1}, {2}", i + 1, v.Type.ToString(), v.typeData.ToDetail()), comment);
                             }
 
-                            lock(this.reqDic)
+
+                    lock (this.transactionMap)
                             {
-                                if(this.reqDic.TryRemove(dns.header.TransactionID, out PacketData value))
+                        if (this.transactionMap.TryGetValue(dns.header.TransactionID, out PacketData p) && this.transactionMap.Remove (dns.header.TransactionID))
                                 {
-                                    Buffer.BlockCopy(value.originalTransactionID, 0, data.bytes, 0, 2);
-                                    this.udpServer.SendAsync(data.bytes, data.bytes.Length, value.senderEndPoint);
-                                    DBG.MSG("DnsProxyServer.ParseThread - TryRemove, TransactionID=0x{0:X2}\n", dns.header.TransactionID);
+                            Buffer.BlockCopy (p.originalTransactionID, 0, data.bytes, 0, 2);
+                            DBG.MSG ("DnsProxyServer.ParseAndRelay - udpServer.SendAsync TransactionID=0x{0:X2}{1:X2}, {2}\n", p.originalTransactionID[0], p.originalTransactionID[1], p.senderEndPoint);
+                            //_ = this.udpServer.SendAsync (data.bytes, data.bytes.Length, value.senderEndPoint);
+                            this.udpServer.Send (data.bytes, data.bytes.Length, p.senderEndPoint);
+                            DBG.MSG ("DnsProxyServer.ParseAndRelay - TryRemove, TransactionID=0x{0:X4}\n", dns.header.TransactionID);
                                 }
                                 else
                                 {
-                                    DBG.MSG("DnsProxyServer.ParseThread - TryRemove, TransactionID=0x{0:X2} not found\n", dns.header.TransactionID);
-                                    //Debug.Assert (false);
-                                }
-                            }
-                        }
+                            DBG.MSG ("DnsProxyServer.ParseAndRelay - TryRemove, TransactionID=0x{0:X4} not found\n", dns.header.TransactionID);
+                            Debug.Assert (false);
                     }
-                    recvPacketList.Clear();
                 }
-                catch(Exception e)
-                {
-                    DBG.MSG("DnsProxyServer.ParseThread - Exception, {0}\n", e.Message);
-                    Debug.Assert(false);
                 }
             }
 
-            DBG.MSG("DnsProxyServer.ParseThread - END, 0x{0:X}, {1}\n", this.parseThread.ManagedThreadId, this.serverEP.ToString());
+            while (false);
+
+            DBG.MSG("DnsProxyServer.ParseAndRelay - END, {0}\n", data.senderEndPoint.ToString ());
+            DBG.MSG("\n");
         }
 
         private bool IsAcceptAsync(DnsProtocol dns, string ip)
