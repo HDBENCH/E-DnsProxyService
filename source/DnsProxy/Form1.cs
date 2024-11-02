@@ -18,6 +18,7 @@ using System.Xml.Linq;
 using static DnsProxyLibrary.DnsProtocol;
 using static System.Windows.Forms.VisualStyles.VisualStyleElement.ToolBar;
 using Microsoft.Win32;
+using System.IO;
 
 namespace DnsProxyAdmin
 {
@@ -1369,6 +1370,16 @@ namespace DnsProxyAdmin
             }
         }
 
+        private void importDatabaseToolStripMenuItem_Click(object sender, EventArgs e)
+        {
+            using (var ofd = new OpenFileDialog() { FileName = "database", Filter = "DataBase file | database", CheckFileExists = true })
+            {
+                if (ofd.ShowDialog() == DialogResult.OK)
+                {
+                    dnsProxyClient.DataBaseImport(ofd.FileName);
+                }
+            }
+        }
 
         void PipeReceive (Command cmd, object param)
         {

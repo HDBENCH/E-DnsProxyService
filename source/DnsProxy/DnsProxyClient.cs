@@ -47,6 +47,12 @@ namespace DnsProxyLibrary
             return dataBase.Find(host, false, ref bModifyed);
         }
 
+        public void DataBaseImport (string path)
+        {
+            byte[] bytes = Command.Create(CMD.DB_IMPORT, null, path);
+            this.namedPipe.WriteDataAsync(bytes, 0, bytes.Length);
+        }
+
         public void DataBaseOptimization ()
         {
             byte[] bytes = Command.Create(CMD.DB_OPTIMIZATION, null, "");

@@ -24,6 +24,7 @@ namespace DnsProxyLibrary
         DB_OPTIMIZATION,
         DATETIME,
         DEL_SET_HISTORY,
+        DB_IMPORT,
     }
 
     public class Command

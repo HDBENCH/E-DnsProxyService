@@ -38,7 +38,6 @@
             this.proxyEnableToolStripMenuItem = new System.Windows.Forms.ToolStripMenuItem();
             this.toolStripSeparator2 = new System.Windows.Forms.ToolStripSeparator();
             this.cacheClearToolStripMenuItem = new System.Windows.Forms.ToolStripMenuItem();
-            this.databaseOptimizationToolStripMenuItem = new System.Windows.Forms.ToolStripMenuItem();
             this.viewToolStripMenuItem = new System.Windows.Forms.ToolStripMenuItem();
             this.allToolStripMenuItem = new System.Windows.Forms.ToolStripMenuItem();
             this.acceptToolStripMenuItem = new System.Windows.Forms.ToolStripMenuItem();
@@ -53,6 +52,10 @@
             this.toolStripStatusEnabled = new System.Windows.Forms.ToolStripStatusLabel();
             this.toolStripStatusView = new System.Windows.Forms.ToolStripStatusLabel();
             this.toolStripStatusScroll = new System.Windows.Forms.ToolStripStatusLabel();
+            this.toolStripSeparator1 = new System.Windows.Forms.ToolStripSeparator();
+            this.dataBaseToolStripMenuItem = new System.Windows.Forms.ToolStripMenuItem();
+            this.importDatabaseToolStripMenuItem1 = new System.Windows.Forms.ToolStripMenuItem();
+            this.optimizationToolStripMenuItem = new System.Windows.Forms.ToolStripMenuItem();
             ((System.ComponentModel.ISupportInitialize)(this.splitContainer1)).BeginInit();
             this.splitContainer1.Panel1.SuspendLayout();
             this.splitContainer1.Panel2.SuspendLayout();
@@ -126,6 +129,8 @@
             // fileToolStripMenuItem
             // 
             this.fileToolStripMenuItem.DropDownItems.AddRange(new System.Windows.Forms.ToolStripItem[] {
+            this.dataBaseToolStripMenuItem,
+            this.toolStripSeparator1,
             this.exitToolStripMenuItem});
             this.fileToolStripMenuItem.Name = "fileToolStripMenuItem";
             this.fileToolStripMenuItem.Size = new System.Drawing.Size(37, 20);
@@ -134,7 +139,7 @@
             // exitToolStripMenuItem
             // 
             this.exitToolStripMenuItem.Name = "exitToolStripMenuItem";
-            this.exitToolStripMenuItem.Size = new System.Drawing.Size(93, 22);
+            this.exitToolStripMenuItem.Size = new System.Drawing.Size(180, 22);
             this.exitToolStripMenuItem.Text = "&Exit";
             this.exitToolStripMenuItem.Click += new System.EventHandler(this.contextMenu_Exit);
             // 
@@ -143,8 +148,7 @@
             this.optionToolStripMenuItem.DropDownItems.AddRange(new System.Windows.Forms.ToolStripItem[] {
             this.proxyEnableToolStripMenuItem,
             this.toolStripSeparator2,
-            this.cacheClearToolStripMenuItem,
-            this.databaseOptimizationToolStripMenuItem});
+            this.cacheClearToolStripMenuItem});
             this.optionToolStripMenuItem.Name = "optionToolStripMenuItem";
             this.optionToolStripMenuItem.Size = new System.Drawing.Size(56, 20);
             this.optionToolStripMenuItem.Text = "&Option";
@@ -167,13 +171,6 @@
             this.cacheClearToolStripMenuItem.Size = new System.Drawing.Size(193, 22);
             this.cacheClearToolStripMenuItem.Text = "&Dns Cache Clear";
             this.cacheClearToolStripMenuItem.Click += new System.EventHandler(this.contextMenu_DnsClear);
-            // 
-            // databaseOptimizationToolStripMenuItem
-            // 
-            this.databaseOptimizationToolStripMenuItem.Name = "databaseOptimizationToolStripMenuItem";
-            this.databaseOptimizationToolStripMenuItem.Size = new System.Drawing.Size(193, 22);
-            this.databaseOptimizationToolStripMenuItem.Text = "Database &Optimization";
-            this.databaseOptimizationToolStripMenuItem.Click += new System.EventHandler(this.contextMenu_DB_Optimization);
             // 
             // viewToolStripMenuItem
             // 
@@ -299,6 +296,34 @@
             this.toolStripStatusScroll.Text = "Scroll";
             this.toolStripStatusScroll.MouseUp += new System.Windows.Forms.MouseEventHandler(this.scrollToolStripMouseUp);
             // 
+            // toolStripSeparator1
+            // 
+            this.toolStripSeparator1.Name = "toolStripSeparator1";
+            this.toolStripSeparator1.Size = new System.Drawing.Size(177, 6);
+            // 
+            // dataBaseToolStripMenuItem
+            // 
+            this.dataBaseToolStripMenuItem.DropDownItems.AddRange(new System.Windows.Forms.ToolStripItem[] {
+            this.importDatabaseToolStripMenuItem1,
+            this.optimizationToolStripMenuItem});
+            this.dataBaseToolStripMenuItem.Name = "dataBaseToolStripMenuItem";
+            this.dataBaseToolStripMenuItem.Size = new System.Drawing.Size(180, 22);
+            this.dataBaseToolStripMenuItem.Text = "&DataBase";
+            // 
+            // importDatabaseToolStripMenuItem1
+            // 
+            this.importDatabaseToolStripMenuItem1.Name = "importDatabaseToolStripMenuItem1";
+            this.importDatabaseToolStripMenuItem1.Size = new System.Drawing.Size(180, 22);
+            this.importDatabaseToolStripMenuItem1.Text = "&Import";
+            this.importDatabaseToolStripMenuItem1.Click += new System.EventHandler(this.importDatabaseToolStripMenuItem_Click);
+            // 
+            // optimizationToolStripMenuItem
+            // 
+            this.optimizationToolStripMenuItem.Name = "optimizationToolStripMenuItem";
+            this.optimizationToolStripMenuItem.Size = new System.Drawing.Size(180, 22);
+            this.optimizationToolStripMenuItem.Text = "&Optimization";
+            this.optimizationToolStripMenuItem.Click += new System.EventHandler(this.contextMenu_DB_Optimization);
+            // 
             // Form1
             // 
             this.AutoScaleDimensions = new System.Drawing.SizeF(6F, 12F);
@@ -351,7 +376,10 @@
         private System.Windows.Forms.ToolStripMenuItem scrollToolStripMenuItem;
         private System.Windows.Forms.ToolStripSeparator toolStripSeparator3;
         private System.Windows.Forms.ToolStripStatusLabel toolStripStatusScroll;
-        private System.Windows.Forms.ToolStripMenuItem databaseOptimizationToolStripMenuItem;
+        private System.Windows.Forms.ToolStripSeparator toolStripSeparator1;
+        private System.Windows.Forms.ToolStripMenuItem dataBaseToolStripMenuItem;
+        private System.Windows.Forms.ToolStripMenuItem importDatabaseToolStripMenuItem1;
+        private System.Windows.Forms.ToolStripMenuItem optimizationToolStripMenuItem;
     }
 }
 

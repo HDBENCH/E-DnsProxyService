@@ -925,6 +925,17 @@ namespace DnsProxyLibrary
                     }
                     break;
 
+                case CMD.DB_IMPORT:
+                    {
+                        this.dataBase.Import(cmd.GetString(), false);
+                        this.bModifyed = true;
+
+                        byte[] b = this.dataBase.Export();
+                        b = Command.Create(CMD.LOAD, b);
+                        this.namedPipe.WriteDataAsync(b, 0, b.Length);
+                    }
+                    break;
+
                 default:
                     {
                         DBG.MSG("DnsProxyServer.PipeReceive, {0}, {1}\n", cmd.GetCMD(), cmd.GetString());

@@ -144,7 +144,14 @@ namespace DnsProxyLibrary
         }
         public void UpdateDatetime()
         {
-            this.datetime = DateTime.Now;
+            DataBase db = this;
+            DateTime timeNow = DateTime.Now;
+
+            while (db != null)
+            {
+                db.datetime = timeNow;
+                db = db.parent;
+            }
         }
         
         public bool SetComment(string value)
@@ -376,13 +383,16 @@ namespace DnsProxyLibrary
             ImportFolder(path, "", callback);
         }
 
-        public void Import (Stream stream)
+        public void Import (Stream stream, bool bClear = true)
         {
             byte[] guid_header = new byte[16];
             byte verion;
             byte[] reserved = new byte[15];
 
-            Clear ();
+            if (bClear)
+            {
+                Clear ();
+            }
 
             do
             {
@@ -407,13 +417,15 @@ namespace DnsProxyLibrary
 #endif
         }
 
-        public void Import (string path)
+        public void Import (string path, bool bClear = true)
         {
             DBG.MSG ("DataBase.Import - {0}\n", path);
             lock (this)
             {
-
-            Clear ();
+                if (bClear)
+                {
+                    Clear ();
+                }
 
             do
             {
@@ -425,7 +437,7 @@ namespace DnsProxyLibrary
 
                 using (FileStream stream = new FileStream (path, FileMode.Open, FileAccess.Read))
                 {
-                    Import(stream);
+                    Import(stream, bClear);
                 }
             }
             while (false);
